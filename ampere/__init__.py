@@ -1,16 +1,10 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
-"""Ampere Environment."""
+"""Ampere EV Routing Environment."""
 
 from .client import AmpereEnv
-from .models import AmpereAction, AmpereObservation
+from .models import EVAction, EVObservation
 
 __all__ = [
-    "AmpereAction",
-    "AmpereObservation",
+    "EVAction",
+    "EVObservation",
     "AmpereEnv",
 ]

@@ -5,3 +5,37 @@ runtime: fastapi
 app: server.app:app
 port: 8000
 
+description: >
+  Ampere — India-centric EV highway routing simulation.
+  An AI agent routes a Tata Nexon EV Creative MR across real Indian highway
+  corridors, managing aerodynamic battery drain, driver fatigue (MORTH-compliant),
+  and stochastic charging infrastructure failures.
+  Based on real Nexon EV specs and real Indian highway charger data.
+
+tasks:
+  - name: task_1_blr_cbe
+    description: "Bangalore to Coimbatore via NH44+NH544. 365km. Full battery. Reliable chargers throughout. Teaches basic speed-vs-battery tradeoff."
+    difficulty: easy
+    scenario_key: task_1_blr_cbe
+    time_limit_seconds: 300
+    max_steps: 24
+    initial_battery_pct: 100
+    grader: score_0_to_1
+
+  - name: task_2_gwh_gtk
+    description: "Guwahati to Gangtok via NH27+NH10. 540km. Starts at 80% battery. 170km charger desert early. Mountain section at end with 1.8x battery drain. Teaches multi-leg planning and terrain-aware speed choice."
+    difficulty: medium
+    scenario_key: task_2_gwh_gtk
+    time_limit_seconds: 300
+    max_steps: 28
+    initial_battery_pct: 80
+    grader: score_0_to_1
+
+  - name: task_3_knp_slg
+    description: "Kanpur to Siliguri via NH19. 1110km. Bihar charger desert (300km gap). Stochastic charger failures. Requires risk-buffered planning and fatigue management across 28 hours."
+    difficulty: hard
+    scenario_key: task_3_knp_slg
+    time_limit_seconds: 600
+    max_steps: 50
+    initial_battery_pct: 100
+    grader: score_0_to_1

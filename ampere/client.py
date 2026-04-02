@@ -1,9 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 """Ampere Environment Client."""
 
 from typing import Dict
@@ -12,88 +6,83 @@ from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
 
-from .models import AmpereAction, AmpereObservation
+from .models import EVAction, EVObservation
 
 
-class AmpereEnv(
-    EnvClient[AmpereAction, AmpereObservation, State]
-):
+class AmpereEnv(EnvClient[EVAction, EVObservation, State]):
     """
-    Client for the Ampere Environment.
+    Client for the Ampere EV Routing Environment.
 
-    This client maintains a persistent WebSocket connection to the environment server,
-    enabling efficient multi-step interactions with lower latency.
-    Each client instance has its own dedicated environment session on the server.
+    Maintains a persistent WebSocket connection to the environment server.
+    Each client instance has its own dedicated environment session.
 
     Example:
-        >>> # Connect to a running server
         >>> with AmpereEnv(base_url="http://localhost:8000") as client:
         ...     result = client.reset()
-        ...     print(result.observation.echoed_message)
+        ...     print(result.observation.current_location)
         ...
-        ...     result = client.step(AmpereAction(message="Hello!"))
-        ...     print(result.observation.echoed_message)
-
-    Example with Docker:
-        >>> # Automatically start container and connect
-        >>> client = AmpereEnv.from_docker_image("ampere-env:latest")
-        >>> try:
-        ...     result = client.reset()
-        ...     result = client.step(AmpereAction(message="Test"))
-        ... finally:
-        ...     client.close()
+        ...     action = EVAction(
+        ...         next_waypoint="Hosur",
+        ...         speed_mode="cruise",
+        ...         charge_minutes=0,
+        ...         rest_minutes=0,
+        ...     )
+        ...     result = client.step(action)
+        ...     print(result.observation.battery_percentage)
     """
 
-    def _step_payload(self, action: AmpereAction) -> Dict:
-        """
-        Convert AmpereAction to JSON payload for step message.
-
-        Args:
-            action: AmpereAction instance
-
-        Returns:
-            Dictionary representation suitable for JSON encoding
-        """
+    def _step_payload(self, action: EVAction) -> Dict:
+        """Convert EVAction to JSON payload for step message."""
         return {
-            "message": action.message,
+            "next_waypoint":  action.next_waypoint,
+            "speed_mode":     action.speed_mode,
+            "charge_minutes": action.charge_minutes,
+            "rest_minutes":   action.rest_minutes,
         }
 
-    def _parse_result(self, payload: Dict) -> StepResult[AmpereObservation]:
-        """
-        Parse server response into StepResult[AmpereObservation].
-
-        Args:
-            payload: JSON response data from server
-
-        Returns:
-            StepResult with AmpereObservation
-        """
+    def _parse_result(self, payload: Dict) -> StepResult[EVObservation]:
+        """Parse server response into StepResult[EVObservation]."""
         obs_data = payload.get("observation", {})
-        observation = AmpereObservation(
-            echoed_message=obs_data.get("echoed_message", ""),
-            message_length=obs_data.get("message_length", 0),
-            done=payload.get("done", False),
-            reward=payload.get("reward"),
-            metadata=obs_data.get("metadata", {}),
+
+        from .models import GPSDashboard, RouteOption
+
+        routes = [
+            RouteOption(**r)
+            for r in obs_data.get("available_routes", [])
+        ]
+
+        nav = obs_data.get("navigation_system", {})
+        gps = GPSDashboard(
+            distance_to_final_destination_km = nav.get("distance_to_final_destination_km", 0),
+            distance_to_nearest_charger_km   = nav.get("distance_to_nearest_charger_km", 0),
+            charger_reliability_estimate     = nav.get("charger_reliability_estimate", 1.0),
+            optimal_heading                  = nav.get("optimal_heading", ""),
+        )
+
+        observation = EVObservation(
+            current_location       = obs_data.get("current_location", ""),
+            battery_percentage     = obs_data.get("battery_percentage", 100.0),
+            fatigue_points         = obs_data.get("fatigue_points", 0.0),
+            time_elapsed_minutes   = obs_data.get("time_elapsed_minutes", 0.0),
+            available_routes       = routes,
+            navigation_system      = gps,
+            battery_warning        = obs_data.get("battery_warning", "OK"),
+            can_reach_next_charger = obs_data.get("can_reach_next_charger", True),
+            estimated_range_km     = obs_data.get("estimated_range_km", 0),
+            done                   = payload.get("done", False),
+            reward                 = payload.get("reward", 0.0),
+            metadata               = obs_data.get("metadata", {}),
         )
 
         return StepResult(
-            observation=observation,
-            reward=payload.get("reward"),
-            done=payload.get("done", False),
+            observation = observation,
+            reward      = payload.get("reward", 0.0),
+            done        = payload.get("done", False),
         )
 
     def _parse_state(self, payload: Dict) -> State:
-        """
-        Parse server response into State object.
-
-        Args:
-            payload: JSON response from state request
-
-        Returns:
-            State object with episode_id and step_count
-        """
+        """Parse server response into State object."""
         return State(
-            episode_id=payload.get("episode_id"),
-            step_count=payload.get("step_count", 0),
+            episode_id = payload.get("episode_id"),
+            step_count = payload.get("step_count", 0),
         )

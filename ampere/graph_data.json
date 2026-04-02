@@ -1,0 +1,505 @@
+{
+  "vehicle": {
+    "name": "Tata Nexon EV Creative MR",
+    "battery_capacity_kwh": 30.0,
+    "base_consumption_wh_per_km": 136.0,
+    "optimal_speed_kmh": 50.0,
+    "max_charge_rate_kw": 50.0
+  },
+
+  "speed_modes": {
+    "eco": 50,
+    "cruise": 70,
+    "highway": 90,
+    "sport": 110
+  },
+
+  "terrain_multipliers": {
+    "flat": 1.0,
+    "mountain": 1.8,
+    "urban": 1.2
+  },
+
+  "task_1_blr_cbe": {
+    "start_node": "Bangalore",
+    "end_node": "Coimbatore",
+    "deadline_mins": 420,
+    "max_steps": 24,
+    "initial_battery": 100.0,
+    "stochastic": false,
+    "difficulty": "easy",
+    "description": "Bangalore to Coimbatore via NH44+NH544, 365km, reliable chargers throughout",
+    "nodes": {
+      "Bangalore": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      },
+      "Hosur": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Shoolagiri": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 0.95,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "petrol_pump"
+      },
+      "Krishnagiri": {
+        "charger_type": "fast_dc",
+        "charger_kw": 30,
+        "reliability": 0.70,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Dharmapuri": {
+        "charger_type": "fast_dc",
+        "charger_kw": 25,
+        "reliability": 0.85,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Thoppur": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 0.95,
+        "is_mountain": true,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Salem": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 0.85,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      },
+      "Sankari": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Bhavani": {
+        "charger_type": "fast_dc",
+        "charger_kw": 25,
+        "reliability": 0.55,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Perundurai": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 0.95,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "petrol_pump"
+      },
+      "Avinashi": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 0.95,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Coimbatore": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      }
+    },
+    "edges": [
+      {"from": "Bangalore",  "to": "Hosur",       "distance_km": 40,  "terrain": "flat"},
+      {"from": "Hosur",      "to": "Shoolagiri",  "distance_km": 25,  "terrain": "flat"},
+      {"from": "Shoolagiri", "to": "Krishnagiri", "distance_km": 25,  "terrain": "flat"},
+      {"from": "Krishnagiri","to": "Dharmapuri",  "distance_km": 50,  "terrain": "flat"},
+      {"from": "Dharmapuri", "to": "Thoppur",     "distance_km": 35,  "terrain": "mountain"},
+      {"from": "Thoppur",    "to": "Salem",        "distance_km": 35,  "terrain": "mountain"},
+      {"from": "Salem",      "to": "Sankari",      "distance_km": 35,  "terrain": "flat"},
+      {"from": "Sankari",    "to": "Bhavani",      "distance_km": 25,  "terrain": "flat"},
+      {"from": "Bhavani",    "to": "Perundurai",   "distance_km": 20,  "terrain": "flat"},
+      {"from": "Perundurai", "to": "Avinashi",     "distance_km": 35,  "terrain": "flat"},
+      {"from": "Avinashi",   "to": "Coimbatore",   "distance_km": 40,  "terrain": "flat"}
+    ]
+  },
+
+  "task_2_gwh_gtk": {
+    "start_node": "Guwahati",
+    "end_node": "Gangtok",
+    "deadline_mins": 660,
+    "max_steps": 28,
+    "initial_battery": 80.0,
+    "stochastic": false,
+    "difficulty": "medium",
+    "description": "Guwahati to Gangtok via NH27+NH10, 540km, starts at 80% battery, mountain section at end",
+    "nodes": {
+      "Guwahati": {
+        "charger_type": "fast_dc",
+        "charger_kw": 60,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      },
+      "Rangia": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Barpeta_Road": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Bongaigaon": {
+        "charger_type": "fast_dc",
+        "charger_kw": 30,
+        "reliability": 0.85,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "petrol_pump"
+      },
+      "Gossaigaon": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Hasimara": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Dhupguri": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Siliguri_M1": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Siliguri": {
+        "charger_type": "fast_dc",
+        "charger_kw": 25,
+        "reliability": 0.85,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      },
+      "Ambari_Falakata": {
+        "charger_type": "fast_dc",
+        "charger_kw": 30,
+        "reliability": 0.60,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Sevoke": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": true,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Rangpo": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": true,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Gangtok": {
+        "charger_type": "fast_dc",
+        "charger_kw": 30,
+        "reliability": 1.0,
+        "is_mountain": true,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      }
+    },
+    "edges": [
+      {"from": "Guwahati",        "to": "Rangia",           "distance_km": 50,  "terrain": "flat"},
+      {"from": "Rangia",           "to": "Barpeta_Road",     "distance_km": 60,  "terrain": "flat"},
+      {"from": "Barpeta_Road",     "to": "Bongaigaon",       "distance_km": 60,  "terrain": "flat"},
+      {"from": "Bongaigaon",       "to": "Gossaigaon",       "distance_km": 60,  "terrain": "flat"},
+      {"from": "Gossaigaon",       "to": "Hasimara",         "distance_km": 65,  "terrain": "flat"},
+      {"from": "Hasimara",         "to": "Dhupguri",         "distance_km": 50,  "terrain": "flat"},
+      {"from": "Dhupguri",         "to": "Siliguri_M1",      "distance_km": 38,  "terrain": "flat"},
+      {"from": "Siliguri_M1",      "to": "Siliguri",         "distance_km": 37,  "terrain": "flat"},
+      {"from": "Siliguri",         "to": "Ambari_Falakata",  "distance_km": 20,  "terrain": "flat"},
+      {"from": "Ambari_Falakata",  "to": "Sevoke",           "distance_km": 55,  "terrain": "flat"},
+      {"from": "Sevoke",           "to": "Rangpo",           "distance_km": 30,  "terrain": "mountain"},
+      {"from": "Rangpo",           "to": "Gangtok",          "distance_km": 40,  "terrain": "mountain"}
+    ]
+  },
+
+  "task_3_knp_slg": {
+    "start_node": "Kanpur",
+    "end_node": "Siliguri",
+    "deadline_mins": 1680,
+    "max_steps": 50,
+    "initial_battery": 100.0,
+    "stochastic": true,
+    "difficulty": "hard",
+    "description": "Kanpur to Siliguri via NH19, 1110km, brutal Bihar charger desert, stochastic failures",
+    "nodes": {
+      "Kanpur": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      },
+      "Unnao_Bypass": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Lucknow_Bypass": {
+        "charger_type": "fast_dc",
+        "charger_kw": 60,
+        "reliability": 0.85,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      },
+      "Haidergarh_Exit": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Purvanchal_Rest_Area_1": {
+        "charger_type": "fast_dc",
+        "charger_kw": 60,
+        "reliability": 0.70,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "petrol_pump"
+      },
+      "Purvanchal_M1": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Azamgarh_Exit": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Barhalganj": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Gorakhpur_Bypass": {
+        "charger_type": "fast_dc",
+        "charger_kw": 30,
+        "reliability": 0.85,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "petrol_pump"
+      },
+      "Kushinagar": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Gopalganj": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Motihari_Bypass": {
+        "charger_type": "fast_dc",
+        "charger_kw": 30,
+        "reliability": 0.70,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Motihari_M1": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Muzaffarpur_Junction": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Darbhanga_Bypass": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Jhanjharpur": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Phulparas": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Forbesganj": {
+        "charger_type": "fast_dc",
+        "charger_kw": 60,
+        "reliability": 0.95,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "petrol_pump"
+      },
+      "Araria": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Purnia_Bypass": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Kishanganj": {
+        "charger_type": "fast_dc",
+        "charger_kw": 30,
+        "reliability": 0.70,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Islampur": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": false,
+        "rest_facility_type": null
+      },
+      "Bagdogra": {
+        "charger_type": null,
+        "charger_kw": 0,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "dhaba"
+      },
+      "Siliguri": {
+        "charger_type": "fast_dc",
+        "charger_kw": 50,
+        "reliability": 1.0,
+        "is_mountain": false,
+        "has_rest_facility": true,
+        "rest_facility_type": "hotel"
+      }
+    },
+    "edges": [
+      {"from": "Kanpur",                 "to": "Unnao_Bypass",            "distance_km": 25,  "terrain": "flat"},
+      {"from": "Unnao_Bypass",           "to": "Lucknow_Bypass",          "distance_km": 65,  "terrain": "flat"},
+      {"from": "Lucknow_Bypass",         "to": "Haidergarh_Exit",         "distance_km": 60,  "terrain": "flat"},
+      {"from": "Haidergarh_Exit",        "to": "Purvanchal_Rest_Area_1",  "distance_km": 60,  "terrain": "flat"},
+      {"from": "Purvanchal_Rest_Area_1", "to": "Purvanchal_M1",           "distance_km": 40,  "terrain": "flat"},
+      {"from": "Purvanchal_M1",          "to": "Azamgarh_Exit",           "distance_km": 40,  "terrain": "flat"},
+      {"from": "Azamgarh_Exit",          "to": "Barhalganj",              "distance_km": 60,  "terrain": "flat"},
+      {"from": "Barhalganj",             "to": "Gorakhpur_Bypass",        "distance_km": 45,  "terrain": "flat"},
+      {"from": "Gorakhpur_Bypass",       "to": "Kushinagar",              "distance_km": 55,  "terrain": "flat"},
+      {"from": "Kushinagar",             "to": "Gopalganj",               "distance_km": 45,  "terrain": "flat"},
+      {"from": "Gopalganj",              "to": "Motihari_Bypass",         "distance_km": 65,  "terrain": "flat"},
+      {"from": "Motihari_Bypass",        "to": "Motihari_M1",             "distance_km": 40,  "terrain": "flat"},
+      {"from": "Motihari_M1",            "to": "Muzaffarpur_Junction",    "distance_km": 40,  "terrain": "flat"},
+      {"from": "Muzaffarpur_Junction",   "to": "Darbhanga_Bypass",        "distance_km": 70,  "terrain": "flat"},
+      {"from": "Darbhanga_Bypass",       "to": "Jhanjharpur",             "distance_km": 45,  "terrain": "flat"},
+      {"from": "Jhanjharpur",            "to": "Phulparas",               "distance_km": 40,  "terrain": "flat"},
+      {"from": "Phulparas",              "to": "Forbesganj",              "distance_km": 65,  "terrain": "flat"},
+      {"from": "Forbesganj",             "to": "Araria",                  "distance_km": 30,  "terrain": "flat"},
+      {"from": "Araria",                 "to": "Purnia_Bypass",           "distance_km": 40,  "terrain": "flat"},
+      {"from": "Purnia_Bypass",          "to": "Kishanganj",              "distance_km": 65,  "terrain": "flat"},
+      {"from": "Kishanganj",             "to": "Islampur",                "distance_km": 40,  "terrain": "flat"},
+      {"from": "Islampur",               "to": "Bagdogra",                "distance_km": 60,  "terrain": "flat"},
+      {"from": "Bagdogra",               "to": "Siliguri",                "distance_km": 15,  "terrain": "flat"}
+    ]
+  }
+}
