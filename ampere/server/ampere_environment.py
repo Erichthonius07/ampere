@@ -286,6 +286,7 @@ class AmpereEnvironment(Environment):
         self.fatigue      += drive_time_mins   # +1 fatigue per minute driving
 
         # Move vehicle to new node
+        prev_node = self.current_node
         self.current_node = action.next_waypoint
         time_spent_this_step = drive_time_mins
 
@@ -340,29 +341,42 @@ class AmpereEnvironment(Environment):
 
         # ── Reward (8 components) ─────────────────────────────────────────────
 
+        # ── Reward (8 components) ─────────────────────────────────────────────
+
         reward = 0.0
 
-        # 1. Base progress — reward for reaching a valid waypoint
-        reward += 10.0
-
-        # 2. Progress signal — penalty proportional to remaining distance
+        # 1 & 2. Progress signal (Potential-based shaping)
+        # Replaces the flat +10.0 and absolute remaining distance penalty
         try:
-            remaining_km = nx.shortest_path_length(
-                self.map_graph,
-                self.current_node,
-                self.end_node,
-                weight="distance_km",
+            prev_remaining_km = nx.shortest_path_length(
+                    self.map_graph,
+                    prev_node,
+                    self.end_node,
+                    weight="distance_km",
             )
         except (nx.NetworkXNoPath, nx.NodeNotFound):
-            remaining_km = 9999
-        reward -= 0.05 * remaining_km
+            prev_remaining_km = 9999
+            
+        try:
+            current_remaining_km = nx.shortest_path_length(
+                    self.map_graph,
+                    self.current_node,
+                    self.end_node,
+                    weight="distance_km",
+            )
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            current_remaining_km = 9999
+
+        # Reward moving closer, penalize moving backward (looping/ping-ponging)
+        if prev_remaining_km != 9999 and current_remaining_km != 9999:
+            reward += (prev_remaining_km - current_remaining_km) * 0.2
 
         # 3. Time pressure — discourage unnecessary delay
         reward -= 0.02 * time_spent_this_step
 
         # 4. Battery efficiency — penalise aggressive driving
         battery_used = prev_battery - self.battery
-        reward -= 0.05 * max(0.0, battery_used)  # only penalise drain, not gain
+        reward -= 0.05 * max(0.0, battery_used)        #only penalise drain, not gain
 
         # 5. Fatigue management — proactive penalty before crash
         if self.fatigue > 200:
@@ -371,21 +385,23 @@ class AmpereEnvironment(Environment):
             reward -= 2.0
 
         # 6. Risk awareness — low battery near charger desert
-        if self.battery < 20.0:
-            nearest_km = self._get_nearest_charger_km()
-            if nearest_km > 100:
-                reward -= 5.0
+        nearest_km = self._get_nearest_charger_km()
+        if self.battery < 20.0 and nearest_km > 100:
+            reward -= 5.0
 
-        # 7. Smart charging — reward charging when battery is low
-        if action.charge_minutes > 0 and prev_battery < 40.0 and charger_worked:
-            reward += 2.0
+        # 7. Smart charging — dynamic threshold based on distance to nearest charger
+        eco_drain_pct_per_km = (VEHICLE["base_consumption_wh_per_km"] / (VEHICLE["battery_capacity_kwh"] * 1000)) * 100.0
+        safe_battery_threshold = (nearest_km * eco_drain_pct_per_km) + 15.0 # Distance to charger + 15% safety buffer
+        if action.charge_minutes > 0 and prev_battery < safe_battery_threshold and charger_worked:
+                reward += 2.0
 
-        # 8. Destination optimisation
+        # 8. Destination optimisation — continuous reward curve
         if reached:
-            if 1.0 <= self.battery <= 10.0:
-                reward += 20.0                             # hyper-miling bonus
-            elif self.battery > 15.0:
-                reward -= 0.02 * (self.battery - 15.0)    # wasteful caution penalty
+            ideal_battery = 10.0
+            battery_diff = abs(self.battery - ideal_battery)
+            # Smoothly scale from +20.0 down to 0.0 as battery deviates from the 10% ideal
+            destination_bonus = max(0.0, 20.0 - (0.5 * battery_diff))
+            reward += destination_bonus
 
         # Terminal failure penalty
         if crashed or stranded:
