@@ -5,26 +5,31 @@ from openai import OpenAI
 from client import AmpereEnv
 from models import EVAction
 
-# Initialize the LLM Client
+# Fallback chain: Grader Key -> HF Token -> Your Local Key -> Dummy (prevents crash)
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("XAI_API_KEY") or "dummy_token"
+# Fallback chain: Grader URL -> Your Local Groq URL
+BASE_URL = os.environ.get("API_BASE_URL", "https://api.groq.com/openai/v1")
+
+# Initialize the LLM Client safely
 llm_client = OpenAI(
-    api_key=os.environ.get("XAI_API_KEY"),
-    base_url="https://api.groq.com/openai/v1"
+    api_key=API_KEY,
+    base_url=BASE_URL
 )
 
-SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "http://127.0.0.1:8000")
-
+SERVER_URL = os.environ.get("ENV_URL") or os.environ.get("AMPERE_SERVER_URL") or "https://navistha-ampere.hf.space"
 # Read server URL from environment variable — set AMPERE_SERVER_URL for cloud deployment
 SYSTEM_PROMPT = """You are EcoRoute, an advanced AI EV Dispatcher. 
 Your objective is to safely navigate a Tata Nexon EV to the final destination before the deadline.
 
 CRITICAL RULES:
-1. PHYSICS: Aerodynamic drag is exponential. 
-   - 'eco' (50km/h): Safest, maximum range.
-   - 'cruise' (70km/h): Balanced.
-   - 'highway' (90km/h) & 'sport' (110km/h): Massive battery drain. Use rarely.
+1. PHYSICS & TIME MANAGEMENT: Aerodynamic drag is exponential. 
+   - 'eco' (50km/h): Safest (~220km range). Use this 80% of the time.
+   - 'cruise' (70km/h): Use this to save time if the next node is < 80km away AND battery > 60%.
+   - 'highway' (90km/h): MASSIVE battery drain (~67km max range). ONLY use this "sprint" if the next node is < 45km away AND battery > 50%.
+   - 'sport' (110km/h): THE LAST MILE DASH. Drains battery 4.8x faster (~45km max range). ONLY use this if the final destination is < 25km away, you have plenty of battery, and you are about to run out of time!
 2. TERRAIN: 'mountain' terrain drains battery 1.8x faster. MUST use 'eco' speed on mountains.
-3. FATIGUE: If fatigue hits 300, you crash. Use 'rest_minutes' to recover (-3 points/min).
-4. CHARGING (DO NOT BE GREEDY): If battery is below 20%, you are in FATAL DANGER. You MUST set 'charge_minutes' to at least 45 at the current node to survive. 'fast_dc' gives 2.45%/min, 'slow_ac' gives 0.353%/min. 
+3. FATIGUE: If fatigue hits 300, you crash. Use 'rest_minutes' to recover (-3 points/min). Charging also counts as resting.
+4. CHARGING (SURVIVAL): If battery is below 40%, you MUST set 'charge_minutes' to at least 45 at the current node to survive. 'fast_dc' gives 2.45%/min, 'slow_ac' gives 0.353%/min. 
 5. WAYPOINTS: Choose a 'next_waypoint' that exactly matches a 'destination_node' in 'available_routes'.
 
 You must output your decision strictly as a JSON object matching this schema:
@@ -77,8 +82,9 @@ def get_action_from_llm(obs) -> EVAction | None:
 
             return action
 
-        except (json.JSONDecodeError, TypeError, ValueError) as e:
-            print(f"   ⚠️  Attempt {attempt}: Failed to parse LLM response — {e}. Retrying...")
+        # NEW FIX: Catch ALL exceptions (network, auth, JSON, validation)
+        except Exception as e:
+            print(f"   ⚠️  Attempt {attempt}: Failed LLM call or parse — {e}. Retrying...")
 
     print("❌ All retries exhausted. Could not get a valid action from the LLM.")
     return None
@@ -94,6 +100,8 @@ def run_agent(scenario="task_1_blr_cbe"):
         step_result = env.reset(scenario_key=scenario)
         obs = step_result.observation
         done = step_result.done
+
+        print(f"[START] task={scenario}", flush=True)
 
         step_count = 0
         total_reward = 0.0
@@ -155,14 +163,11 @@ def run_agent(scenario="task_1_blr_cbe"):
         print(obs.navigation_system.optimal_heading)
         print("=" * 60)
 
-        
-if __name__ == "__main__":
-    if not os.environ.get("XAI_API_KEY"):
-        print("❌ ERROR: XAI_API_KEY environment variable is missing!")
-        print("Run this in your terminal first:")
-        print("  Windows (PowerShell): $env:XAI_API_KEY=\"your-key\"")
-        print("  Mac/Linux: export XAI_API_KEY=\"your-key\"")
-        exit(1)
 
-    # Swap to task_2_mum_pun or task_3_knp_slg once task_1 is passing
+if __name__ == "__main__":
+    if not API_KEY or API_KEY == "dummy_token":
+        print("⚠️ WARNING: No valid API Key found. The LLM calls will likely fail.")
+        print("Run this locally using: export XAI_API_KEY='your-key'")
+
+    # Swap to task_2 or task_3 once task_1 is passing
     run_agent("task_1_blr_cbe")

@@ -26,6 +26,7 @@ from openenv.core.env_server.http_server import create_app
 
 from models import EVAction, EVObservation
 from server.ampere_environment import AmpereEnvironment
+from fastapi.responses import JSONResponse
 
 app = create_app(
     AmpereEnvironment,
@@ -35,17 +36,36 @@ app = create_app(
     max_concurrent_envs=1,
 )
 
+@app.get("/")
+def root():
+    return {"status": "ok"}
+
+@app.get("/health")
+def health():
+    return JSONResponse({"status": "healthy"})
+
 
 def main(host: str = "0.0.0.0", port: int = 8000):
+    """
+    Entry point for direct execution via uv run or python -m.
+
+    This function enables running the server without Docker:
+        uv run --project . server
+        uv run --project . server --port 8001
+        python -m ampere.server.app
+
+    Args:
+        host: Host address to bind to (default: "0.0.0.0")
+        port: Port number to listen on (default: 8000)
+
+    For production deployments, consider using uvicorn directly with
+    multiple workers:
+        uvicorn ampere.server.app:app --workers 4
+    """
     import uvicorn
+
     uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run the Ampere EV environment server.")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host")
-    parser.add_argument("--port", type=int, default=8000, help="Bind port")
-    args = parser.parse_args()
-    main(host=args.host, port=args.port)
+    main()
