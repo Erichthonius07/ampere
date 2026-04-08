@@ -5,10 +5,15 @@ from openai import OpenAI
 from client import AmpereEnv
 from models import EVAction
 
-# Initialize the LLM Client
+# Fallback chain: Grader Key -> HF Token -> Your Local Key -> Dummy (prevents crash)
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("XAI_API_KEY") or "dummy_token"
+# Fallback chain: Grader URL -> Your Local Groq URL
+BASE_URL = os.environ.get("API_BASE_URL", "https://api.groq.com/openai/v1")
+
+# Initialize the LLM Client safely
 llm_client = OpenAI(
-    api_key=os.environ.get("XAI_API_KEY"),
-    base_url="https://api.groq.com/openai/v1"
+    api_key=API_KEY,
+    base_url=BASE_URL
 )
 
 SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "https://navistha-ampere.hf.space/web")
@@ -142,12 +147,9 @@ def run_agent(scenario="task_1_blr_cbe"):
 
 
 if __name__ == "__main__":
-    if not os.environ.get("XAI_API_KEY"):
-        print("❌ ERROR: XAI_API_KEY environment variable is missing!")
-        print("Run this in your terminal first:")
-        print("  Windows (PowerShell): $env:XAI_API_KEY=\"your-key\"")
-        print("  Mac/Linux: export XAI_API_KEY=\"your-key\"")
-        exit(1)
+    if not API_KEY or API_KEY == "dummy_token":
+        print("⚠️ WARNING: No valid API Key found. The LLM calls will likely fail.")
+        print("Run this locally using: export XAI_API_KEY='your-key'")
 
-    # Swap to task_2_mum_pun or task_3_knp_slg once task_1 is passing
+    # Swap to task_2 or task_3 once task_1 is passing
     run_agent("task_1_blr_cbe")
