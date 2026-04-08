@@ -23,7 +23,7 @@
   "task_1_blr_cbe": {
     "start_node": "Bangalore",
     "end_node": "Coimbatore",
-    "deadline_mins": 420,
+    "deadline_mins": 470,
     "max_steps": 24,
     "initial_battery": 100.0,
     "stochastic": false,
@@ -145,7 +145,7 @@
   "task_2_gwh_gtk": {
     "start_node": "Guwahati",
     "end_node": "Gangtok",
-    "deadline_mins": 660,
+    "deadline_mins": 720,
     "max_steps": 28,
     "initial_battery": 80.0,
     "stochastic": false,
@@ -276,7 +276,7 @@
   "task_3_knp_slg": {
     "start_node": "Kanpur",
     "end_node": "Siliguri",
-    "deadline_mins": 1680,
+    "deadline_mins": 1848,
     "max_steps": 50,
     "initial_battery": 100.0,
     "stochastic": true,
