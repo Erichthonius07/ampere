@@ -14,7 +14,7 @@ Vehicle: Tata Nexon EV Creative MR
 
 from openenv.core.env_server.types import Action, Observation
 from pydantic import Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 # ── Speed Mode Constants (for reference in descriptions) ─────────────────────
@@ -131,6 +131,12 @@ class EVObservation(Observation):
         default=0,
         description="Estimated remaining range in km at your last chosen speed mode. Use this to sanity-check if you can reach the next charger."
     )
+    
+    # Add these exactly like this at the bottom of EVObservation:
+    reached_destination: bool = Field(default=False, description="True if arrived")
+    crashed: bool = Field(default=False, description="True if fatigue hit 300")
+    stranded: bool = Field(default=False, description="True if battery hit 0")
+    final_grader_score: float = Field(default=0.0, description="Final score 0 to 1")
 
 
 # ── Action ────────────────────────────────────────────────────────────────────

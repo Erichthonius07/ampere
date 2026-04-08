@@ -11,9 +11,9 @@ llm_client = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-# Read server URL from environment variable — set AMPERE_SERVER_URL for cloud deployment
-SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "http://localhost:8000")
+SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "http://127.0.0.1:8000")
 
+# Read server URL from environment variable — set AMPERE_SERVER_URL for cloud deployment
 SYSTEM_PROMPT = """You are EcoRoute, an advanced AI EV Dispatcher. 
 Your objective is to safely navigate a Tata Nexon EV to the final destination before the deadline.
 
@@ -22,10 +22,10 @@ CRITICAL RULES:
    - 'eco' (50km/h): Safest, maximum range.
    - 'cruise' (70km/h): Balanced.
    - 'highway' (90km/h) & 'sport' (110km/h): Massive battery drain. Use rarely.
-2. TERRAIN: If a route's terrain is 'mountain', battery drain is multiplied by 1.8x. You MUST use 'eco' speed on mountains or you will die.
-3. FATIGUE: Driver fatigue increases by 1 point per minute driving. If it hits 300, you crash. Use 'rest_minutes' to recover (-3 points/min). Dhabas/hotels are great for this.
-4. CHARGING: 'slow_ac' only gives 0.23% per minute. 'fast_dc' gives 1.25% per minute. Do the math before choosing 'charge_minutes'.
-5. WAYPOINTS: You can ONLY choose a 'next_waypoint' that exactly matches a 'destination_node' in your 'available_routes'.
+2. TERRAIN: 'mountain' terrain drains battery 1.8x faster. MUST use 'eco' speed on mountains.
+3. FATIGUE: If fatigue hits 300, you crash. Use 'rest_minutes' to recover (-3 points/min).
+4. CHARGING (DO NOT BE GREEDY): If battery is below 20%, you are in FATAL DANGER. You MUST set 'charge_minutes' to at least 45 at the current node to survive. 'fast_dc' gives 2.45%/min, 'slow_ac' gives 0.353%/min. 
+5. WAYPOINTS: Choose a 'next_waypoint' that exactly matches a 'destination_node' in 'available_routes'.
 
 You must output your decision strictly as a JSON object matching this schema:
 {
@@ -132,25 +132,20 @@ def run_agent(scenario="task_1_blr_cbe"):
             time.sleep(1)
 
         # 4. Episode Finished — Print the Grader Report
+        # 4. Episode Finished — Print the Grader Report
         print("🏁 === EPISODE COMPLETE === 🏁")
-        print(f"Destination Reached: {obs.metadata.get('reached_destination')}")
-        print(f"Crashed (Fatigue):   {obs.metadata.get('crashed')}")
-        print(f"Stranded (Battery):  {obs.metadata.get('stranded')}")
-        print(
-            f"Time Elapsed:        {obs.metadata.get('time_elapsed_minutes')} "
-            f"/ {obs.metadata.get('deadline_minutes')} mins"
-        )
-        print("-" * 30)
-        print(f"🏆 FINAL GRADER SCORE: {obs.metadata.get('final_grader_score')} / 1.0")
+        print(f"Time Elapsed: {obs.time_elapsed_minutes} mins")
+        print("-" * 60)
+        print(obs.navigation_system.optimal_heading)
         print("=" * 60)
 
-
+        
 if __name__ == "__main__":
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("❌ ERROR: OPENAI_API_KEY environment variable is missing!")
+    if not os.environ.get("XAI_API_KEY"):
+        print("❌ ERROR: XAI_API_KEY environment variable is missing!")
         print("Run this in your terminal first:")
-        print("  Windows:   set OPENAI_API_KEY=sk-your-key")
-        print("  Mac/Linux: export OPENAI_API_KEY=sk-your-key")
+        print("  Windows (PowerShell): $env:XAI_API_KEY=\"your-key\"")
+        print("  Mac/Linux: export XAI_API_KEY=\"your-key\"")
         exit(1)
 
     # Swap to task_2_mum_pun or task_3_knp_slg once task_1 is passing
