@@ -16,12 +16,8 @@ Usage:
     uvicorn ampere.server.app:app --host 0.0.0.0 --port 8000 --workers 4
 """
 
-try:
-    from openenv.core.env_server.http_server import create_app
-except Exception as e:
-    raise ImportError(
-        "openenv is required. Install with: uv sync"
-    ) from e
+from fastapi import FastAPI, HTTPException
+from openenv.core.env_server.http_server import create_app
 
 try:
     from .models import EVAction, EVObservation
@@ -29,6 +25,14 @@ try:
 except ModuleNotFoundError:
     from models import EVAction, EVObservation
     from server.ampere_environment import AmpereEnvironment
+
+app = create_app(
+    AmpereEnvironment,
+    EVAction,
+    EVObservation,
+    env_name="ampere",
+    max_concurrent_envs=1,
+)
 
 
 app = create_app(
