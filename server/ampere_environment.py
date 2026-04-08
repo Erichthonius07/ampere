@@ -19,27 +19,22 @@ Tasks:
   task_2_gwh_gtk — Guwahati  → Gangtok     540km  deadline 660min  medium  starts 80%
   task_3_knp_slg — Kanpur    → Siliguri   1110km  deadline 1680min hard    stochastic
 """
-import math
+
 import json
 import os
-import random
 from uuid import uuid4
-from typing import List, Dict, Optional
 
-import numpy as np
 import networkx as nx
-import gymnasium as gym
-from gymnasium import spaces
+import numpy as np
 
-# Absolute imports from the root models.py
-from models import (
-    EVAction,
-    EVObservation,
-    EVWaypoint,
-    StepResult,
-    GPSDashboard,
-    RouteOption
-)
+from openenv.core.env_server.interfaces import Environment
+from openenv.core.env_server.types import State
+
+try:
+    from ..models import EVAction, EVObservation, GPSDashboard, RouteOption
+except ImportError:
+    from models import EVAction, EVObservation, GPSDashboard, RouteOption
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
