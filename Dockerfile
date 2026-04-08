@@ -62,10 +62,10 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Set PYTHONPATH so imports work correctly
 ENV PYTHONPATH="/app/env:$PYTHONPATH"
-
+ENV PORT=7860
 # Health check — port 7860 is mandatory for Hugging Face Spaces
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:7860/health || exit 1
 
 # Run the FastAPI server on port 7860 (required by Hugging Face Spaces)
-CMD ["sh", "-c", "cd /app/env && uvicorn server.app:app --host 0.0.0.0 --port 7860"]
+CMD ["sh", "-c", "uvicorn server.app:app --host 0.0.0.0 --port $PORT"]
