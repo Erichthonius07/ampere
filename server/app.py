@@ -6,34 +6,26 @@ Endpoints:
     POST /step   — Execute an action
     GET  /state  — Get current environment state
     GET  /schema — Get action/observation schemas
-    WS   /ws     — WebSocket endpoint for persistent sessions
 
 Usage:
     # Development:
-    uvicorn ampere.server.app:app --reload --host 0.0.0.0 --port 8000
+    uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
 
-    # Production:
-    uvicorn ampere.server.app:app --host 0.0.0.0 --port 8000 --workers 4
+    # Production (HF Spaces):
+    uvicorn server.app:app --host 0.0.0.0 --port 7860 --workers 1
 """
 
-from fastapi import FastAPI, HTTPException
+import sys
+import os
+
+# Ensure the package root is on sys.path so `models` and `server` resolve
+# correctly whether the app is launched from the repo root or via Dockerfile.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from openenv.core.env_server.http_server import create_app
 
-try:
-    from .models import EVAction, EVObservation
-    from ampere_environment import AmpereEnvironment
-except ModuleNotFoundError:
-    from models import EVAction, EVObservation
-    from server.ampere_environment import AmpereEnvironment
-
-app = create_app(
-    AmpereEnvironment,
-    EVAction,
-    EVObservation,
-    env_name="ampere",
-    max_concurrent_envs=1,
-)
-
+from models import EVAction, EVObservation
+from server.ampere_environment import AmpereEnvironment
 
 app = create_app(
     AmpereEnvironment,
@@ -51,7 +43,9 @@ def main(host: str = "0.0.0.0", port: int = 8000):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8000)
+
+    parser = argparse.ArgumentParser(description="Run the Ampere EV environment server.")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host")
+    parser.add_argument("--port", type=int, default=8000, help="Bind port")
     args = parser.parse_args()
-    main(port=args.port)
+    main(host=args.host, port=args.port)
