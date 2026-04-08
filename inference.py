@@ -82,8 +82,9 @@ def get_action_from_llm(obs) -> EVAction | None:
 
             return action
 
-        except (json.JSONDecodeError, TypeError, ValueError) as e:
-            print(f"   ⚠️  Attempt {attempt}: Failed to parse LLM response — {e}. Retrying...")
+        # NEW FIX: Catch ALL exceptions (network, auth, JSON, validation)
+        except Exception as e:
+            print(f"   ⚠️  Attempt {attempt}: Failed LLM call or parse — {e}. Retrying...")
 
     print("❌ All retries exhausted. Could not get a valid action from the LLM.")
     return None
