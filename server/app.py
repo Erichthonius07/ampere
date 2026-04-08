@@ -25,7 +25,7 @@ except Exception as e:
 
 try:
     from ..models import EVAction, EVObservation
-    from .ampere_environment import AmpereEnvironment
+    from ampere_environment import AmpereEnvironment
 except ModuleNotFoundError:
     from models import EVAction, EVObservation
     from server.ampere_environment import AmpereEnvironment
