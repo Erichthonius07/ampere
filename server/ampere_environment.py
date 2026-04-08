@@ -349,18 +349,14 @@ class AmpereEnvironment(Environment):
         km, _ = self._get_nearest_charger_info()
         return km
 
-    def _calculate_final_grade(self, crashed: bool, stranded: bool, reached: bool, timed_out: bool) -> float:
+    def _calculate_final_grade(self, crashed, stranded, reached, timed_out):
+        # ❌ fail conditions
         if not reached or crashed or stranded:
             return 0.0
 
-        if self.time_elapsed <= self.deadline_mins:
-            return 1.0
+        # ❌ late = fail
+        if self.time_elapsed > self.deadline_mins:
+            return 0.0
 
-        minutes_late = self.time_elapsed - self.deadline_mins
-        allowed_late_window = self.deadline_mins * 0.20
-
-        if minutes_late >= allowed_late_window:
-            return 0.3
-
-        grade = 0.6 - (0.3 * (minutes_late / allowed_late_window))
-        return round(grade, 2)
+        # ✅ success
+        return 1.0

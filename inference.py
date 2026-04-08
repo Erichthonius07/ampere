@@ -115,6 +115,22 @@ def run_agent(scenario="task_1_blr_cbe"):
                 print("❌ Agent could not decide. Aborting episode.")
                 break
 
+            # 🔥 SAFETY OVERRIDE (CRITICAL FIX)
+            if obs.battery_percentage < 50:
+                action.speed_mode = "eco"
+
+            # NEVER allow risky speeds (hackathon safe)
+            if action.speed_mode in ["highway", "sport"]:
+                action.speed_mode = "eco"
+
+
+            # 🔥 BATTERY SAFETY
+            if obs.battery_percentage < 40:
+                action.charge_minutes = max(action.charge_minutes, 40)
+
+            if obs.battery_percentage < 25:
+                action.charge_minutes = max(action.charge_minutes, 60)
+
             print(f"⚡ ACTION TAKEN:")
             print(f"   ► Drive to: {action.next_waypoint}")
             print(f"   ► Speed:    {action.speed_mode}")
