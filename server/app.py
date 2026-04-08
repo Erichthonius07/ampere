@@ -26,6 +26,7 @@ from openenv.core.env_server.http_server import create_app
 
 from models import EVAction, EVObservation
 from server.ampere_environment import AmpereEnvironment
+from fastapi.responses import HTMLResponse
 
 app = create_app(
     AmpereEnvironment,
@@ -34,6 +35,10 @@ app = create_app(
     env_name="ampere",
     max_concurrent_envs=1,
 )
+
+@app.get("/", response_class=HTMLResponse)
+def root():
+    return "<h1>🚀 Ampere EV Backend Running</h1>"
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):
