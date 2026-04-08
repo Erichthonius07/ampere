@@ -17,6 +17,7 @@ Usage:
 
 import sys
 import os
+import json
 
 # Ensure the package root is on sys.path so `models` and `server` resolve
 # correctly whether the app is launched from the repo root or via Dockerfile.
@@ -35,6 +36,12 @@ app = create_app(
     env_name="ampere",
     max_concurrent_envs=1,
 )
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+json_path = os.path.join(current_dir, "..", "graph_data.json")
+
+with open(json_path, "r") as f:
+    graph_data = json.load(f)
 
 @app.get("/")
 def root():
