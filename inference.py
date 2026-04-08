@@ -5,37 +5,29 @@ from openai import OpenAI
 from client import AmpereEnv
 from models import EVAction
 
-# Fallback chain: Grader Key -> HF Token -> Your Local Key -> Dummy (prevents crash)
-API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or os.environ.get("XAI_API_KEY") or "dummy_token"
-# Fallback chain: Grader URL -> Your Local Groq URL
-BASE_URL = os.environ.get("API_BASE_URL", "https://api.groq.com/openai/v1")
+# ── Config ─────────────────────────────────────────────────────────────────
+API_KEY    = (os.environ.get("API_KEY") or os.environ.get("HF_TOKEN")
+              or os.environ.get("XAI_API_KEY") or "dummy_token")
+BASE_URL   = os.environ.get("API_BASE_URL", "https://api.groq.com/openai/v1")
+SERVER_URL = (os.environ.get("ENV_URL") or os.environ.get("AMPERE_SERVER_URL")
+              or "https://navistha-ampere.hf.space")
 
-# Initialize the LLM Client safely
-llm_client = OpenAI(
-    api_key=API_KEY,
-    base_url=BASE_URL
-)
+llm_client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
-SERVER_URL = os.environ.get("ENV_URL") or os.environ.get("AMPERE_SERVER_URL") or "https://navistha-ampere.hf.space"
-# Read server URL from environment variable — set AMPERE_SERVER_URL for cloud deployment
-SYSTEM_PROMPT = """You are EcoRoute, an advanced AI EV Dispatcher. 
-Your objective is to safely navigate a Tata Nexon EV to the final destination before the deadline.
+# ── System Prompt ───────────────────────────────────────────────────────────
+SYSTEM_PROMPT = """You are EcoRoute, an advanced AI EV Dispatcher.
+Your objective is to navigate a Tata Nexon EV to the final destination BEFORE the deadline.
 
 CRITICAL RULES:
-1. PHYSICS & TIME MANAGEMENT: Aerodynamic drag is exponential. 
-   - 'eco' (50km/h): Safest (~220km range). Use this 80% of the time.
-   - 'cruise' (70km/h): Use this to save time if the next node is < 80km away AND battery > 60%.
-   - 'highway' (90km/h): MASSIVE battery drain (~67km max range). ONLY use this "sprint" if the next node is < 45km away AND battery > 50%.
-   - 'sport' (110km/h): THE LAST MILE DASH. Drains battery 4.8x faster (~45km max range). ONLY use this if the final destination is < 25km away, you have plenty of battery, and you are about to run out of time!
-2. TERRAIN: 'mountain' terrain drains battery 1.8x faster. MUST use 'eco' speed on mountains.
-3. FATIGUE: If fatigue hits 300, you crash. Use 'rest_minutes' to recover (-3 points/min). Charging also counts as resting.
-4. CHARGING (SURVIVAL): If battery is below 40%, you MUST set 'charge_minutes' to at least 45 at the current node to survive. 'fast_dc' gives 2.45%/min, 'slow_ac' gives 0.353%/min. 
-5. WAYPOINTS: Choose a 'next_waypoint' that exactly matches a 'destination_node' in 'available_routes'.
+1. SPEED: 'cruise' (70km/h) is your default. Use 'eco' (50km/h) ONLY on mountain terrain.
+2. CHARGING: Charge at fast_dc nodes when battery is below 40%. Keep stops short (15-25 min).
+3. WAYPOINTS: Choose EXACTLY one value from the 'Valid next_waypoint values' list.
+4. FATIGUE: Rest only if fatigue > 150. Keep rest short (10-15 min).
 
-You must output your decision strictly as a JSON object matching this schema:
+Output ONLY valid JSON matching this schema exactly:
 {
     "next_waypoint": "ExactNodeName",
-    "speed_mode": "eco" | "cruise" | "highway" | "sport",
+    "speed_mode": "cruise",
     "charge_minutes": 0,
     "rest_minutes": 0
 }
@@ -43,131 +35,164 @@ You must output your decision strictly as a JSON object matching this schema:
 
 MAX_RETRIES = 3
 
-
+# ── LLM Action ──────────────────────────────────────────────────────────────
 def get_action_from_llm(obs) -> EVAction | None:
-    """
-    Calls the LLM and returns a validated EVAction.
-    Retries up to MAX_RETRIES times on parse/validation errors.
-    Also validates that the chosen waypoint is actually available.
-    Returns None if all retries are exhausted.
-    """
     valid_waypoints = [r.destination_node for r in obs.available_routes]
     user_prompt = (
         f"CURRENT DASHBOARD:\n{obs.model_dump_json(indent=2)}\n\n"
-        f"Valid next_waypoint values (choose EXACTLY one): {valid_waypoints}\n\n"
-        f"What is your next action? Output ONLY valid JSON."
+        f"Valid next_waypoint values: {valid_waypoints}\n"
+        f"Output JSON."
     )
-
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = llm_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
+                    {"role": "user",   "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
             )
-
             llm_json = json.loads(response.choices[0].message.content)
             action = EVAction(**llm_json)
-
-            # Validate waypoint is actually reachable from current node
             if action.next_waypoint not in valid_waypoints:
-                print(
-                    f"   ⚠️  Attempt {attempt}: LLM chose invalid waypoint "
-                    f"'{action.next_waypoint}'. Valid: {valid_waypoints}. Retrying..."
-                )
+                print(f"   ⚠️  Attempt {attempt}: Invalid waypoint. Retrying...")
                 continue
-
             return action
-
-        # NEW FIX: Catch ALL exceptions (network, auth, JSON, validation)
         except Exception as e:
-            print(f"   ⚠️  Attempt {attempt}: Failed LLM call or parse — {e}. Retrying...")
-
-    print("❌ All retries exhausted. Could not get a valid action from the LLM.")
+            print(f"   ⚠️  Attempt {attempt}: {e}. Retrying...")
     return None
 
 
-def run_agent(scenario="task_1_blr_cbe"):
-    print(f"\n🚀 Booting EcoRoute Agent for Scenario: {scenario}")
-    print(f"Connecting to OpenEnv Server at {SERVER_URL}...\n")
+# ── Autopilot Override ──────────────────────────────────────────────────────
+def apply_autopilot(action: EVAction, obs) -> EVAction:
+    """
+    Deterministic safety layer applied AFTER the LLM chooses a waypoint.
+    Only overrides speed and charge decisions, never the waypoint.
+    """
+    # -- 1. Terrain-aware speed --
+    # Find the route option for the chosen waypoint to check its terrain
+    chosen_route = next(
+        (r for r in obs.available_routes if r.destination_node == action.next_waypoint),
+        None
+    )
+    if chosen_route and chosen_route.terrain == "mountain":
+        action.speed_mode = "eco"
+    else:
+        action.speed_mode = "cruise"
+
+    # -- 2. Charging logic --
+    action.charge_minutes = 0  # default: no charge
+
+    # Is there a fast charger at the NEXT node (where we're going)?
+    if chosen_route and chosen_route.has_fast_charger:
+        dist_remaining = obs.navigation_system.distance_to_final_destination_km
+
+        if dist_remaining > 60:  # Not in the final approach
+            # Charge if battery is low
+            if obs.battery_percentage < 40:
+                action.charge_minutes = 25   # ~60% charge at 50kW
+            elif obs.battery_percentage < 60 and obs.battery_percentage > 40:
+                action.charge_minutes = 10   # Quick top-up
+        else:
+            # Final approach — only charge if critically low
+            if obs.battery_percentage < 20:
+                action.charge_minutes = 15
+
+    # -- 3. Fatigue management --
+    action.rest_minutes = 0
+    if obs.fatigue_points > 200:
+        action.rest_minutes = 20
+    elif obs.fatigue_points > 150 and chosen_route and chosen_route.has_rest_facility:
+        action.rest_minutes = 10
+
+    return action
+
+
+# ── Score Extraction ────────────────────────────────────────────────────────
+def extract_final_score(obs) -> str:
+    """
+    Robust extraction: tries metadata dict first, then parses optimal_heading
+    string as fallback (for openenv's built-in grader format).
+    """
+    # Primary: our custom metadata
+    if obs.metadata:
+        score = obs.metadata.get("final_grader_score")
+        if score is not None:
+            reached  = obs.metadata.get("reached_destination", "?")
+            stranded = obs.metadata.get("stranded", "?")
+            crashed  = obs.metadata.get("crashed", "?")
+            mins_over = obs.metadata.get("minutes_over_deadline", 0)
+            return (f"{score:.2f}  |  Reached: {reached}  |  "
+                    f"Stranded: {stranded}  |  Crashed: {crashed}  |  "
+                    f"Mins over deadline: {mins_over}")
+
+    # Fallback: openenv embeds score in optimal_heading as
+    # "🏆 FINAL SCORE: X.X / 1.0  |  Reached: ..."
+    heading = getattr(obs.navigation_system, "optimal_heading", "")
+    if heading and "SCORE" in heading:
+        return heading
+
+    return "N/A (score not available)"
+
+
+# ── Main Agent Loop ─────────────────────────────────────────────────────────
+def run_agent(scenario: str = "task_1_blr_cbe"):
+    print(f"\n🚀 EcoRoute Agent — Scenario: {scenario}")
+    print(f"   Server: {SERVER_URL}\n")
 
     with AmpereEnv(base_url=SERVER_URL).sync() as env:
-
-        # 1. Start the Episode
         step_result = env.reset(scenario_key=scenario)
-        obs = step_result.observation
+        obs  = step_result.observation
         done = step_result.done
 
-        print(f"[START] task={scenario}", flush=True)
-
-        step_count = 0
+        step_count   = 0
         total_reward = 0.0
 
-        # 2. The Main RL Loop
         while not done:
             step_count += 1
             print("=" * 60)
-            print(f"📍 STEP {step_count} | Current Location: {obs.current_location}")
-            print(f"🔋 Battery: {obs.battery_percentage}%  | ⚠️ Warning: {obs.battery_warning}")
-            print(f"🥱 Fatigue: {obs.fatigue_points}/300 | ⏱️ Elapsed: {obs.time_elapsed_minutes} mins")
+            print(f"📍 STEP {step_count} | {obs.current_location}")
+            print(f"🔋 {obs.battery_percentage:.1f}%  "
+                  f"| ⚠️  {obs.battery_warning}  "
+                  f"| 🥱 Fatigue: {obs.fatigue_points:.0f}/300")
+            print(f"⏱️  Elapsed: {obs.time_elapsed_minutes:.0f} min  "
+                  f"| 🗺️  Remaining: "
+                  f"{obs.navigation_system.distance_to_final_destination_km} km")
             print(f"🛣️  Options: {[r.destination_node for r in obs.available_routes]}")
             print("-" * 60)
 
-            print("🧠 Thinking...")
             action = get_action_from_llm(obs)
-
             if action is None:
-                print("❌ Agent could not decide. Aborting episode.")
+                print("❌ LLM failed after retries. Aborting.")
                 break
 
-            # 🔥 SAFETY OVERRIDE (CRITICAL FIX)
-            if obs.battery_percentage < 50:
-                action.speed_mode = "eco"
+            # Apply deterministic autopilot on top of LLM waypoint choice
+            action = apply_autopilot(action, obs)
 
-            # NEVER allow risky speeds (hackathon safe)
-            if action.speed_mode in ["highway", "sport"]:
-                action.speed_mode = "eco"
+            print(f"⚡ → {action.next_waypoint}  "
+                  f"| speed={action.speed_mode}  "
+                  f"| charge={action.charge_minutes}m  "
+                  f"| rest={action.rest_minutes}m")
 
+            step_result  = env.step(action)
+            obs          = step_result.observation
+            done         = step_result.done
+            total_reward += step_result.reward
+            print(f"💰 Reward: {step_result.reward:+.2f}  (Total: {total_reward:.2f})")
+            time.sleep(0.5)
 
-            # 🔥 BATTERY SAFETY
-            if obs.battery_percentage < 40:
-                action.charge_minutes = max(action.charge_minutes, 40)
-
-            if obs.battery_percentage < 25:
-                action.charge_minutes = max(action.charge_minutes, 60)
-
-            print(f"⚡ ACTION TAKEN:")
-            print(f"   ► Drive to: {action.next_waypoint}")
-            print(f"   ► Speed:    {action.speed_mode}")
-            print(f"   ► Charge:   {action.charge_minutes} mins")
-            print(f"   ► Rest:     {action.rest_minutes} mins")
-
-            # 3. Send the action to the Environment
-            step_result = env.step(action)
-            obs = step_result.observation
-            reward = step_result.reward
-            done = step_result.done
-            total_reward += reward
-
-            print(f"💰 Reward this step: {reward:.2f} (Total: {total_reward:.2f})\n")
-            time.sleep(1)
-
-        # 4. Episode Finished — Print the Grader Report
-        # 4. Episode Finished — Print the Grader Report
-        print("🏁 === EPISODE COMPLETE === 🏁")
-        print(f"Time Elapsed: {obs.time_elapsed_minutes} mins")
-        print("-" * 60)
-        print(obs.navigation_system.optimal_heading)
+        # ── Episode Summary ────────────────────────────────────────────────
+        print("\n🏁 === EPISODE COMPLETE ===")
+        print(f"   Time elapsed : {obs.time_elapsed_minutes:.1f} min")
+        print(f"   Battery left : {obs.battery_percentage:.1f}%")
+        print(f"   Total reward : {total_reward:.2f}")
+        print(f"   Steps taken  : {step_count}")
+        print(f"🏆 GRADER SCORE: {extract_final_score(obs)}")
         print("=" * 60)
 
 
 if __name__ == "__main__":
-    if not API_KEY or API_KEY == "dummy_token":
-        print("⚠️ WARNING: No valid API Key found. The LLM calls will likely fail.")
-        print("Run this locally using: export XAI_API_KEY='your-key'")
-
-    # Swap to task_2 or task_3 once task_1 is passing
-    run_agent("task_1_blr_cbe")
+    import sys
+    scenario = sys.argv[1] if len(sys.argv) > 1 else "task_1_blr_cbe"
+    run_agent(scenario)
