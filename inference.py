@@ -16,8 +16,7 @@ llm_client = OpenAI(
     base_url=BASE_URL
 )
 
-SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "https://navistha-ampere.hf.space/web")
-
+SERVER_URL = os.environ.get("ENV_URL") or os.environ.get("AMPERE_SERVER_URL") or "https://navistha-ampere.hf.space"
 # Read server URL from environment variable — set AMPERE_SERVER_URL for cloud deployment
 SYSTEM_PROMPT = """You are EcoRoute, an advanced AI EV Dispatcher. 
 Your objective is to safely navigate a Tata Nexon EV to the final destination before the deadline.
