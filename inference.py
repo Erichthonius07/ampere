@@ -11,7 +11,7 @@ llm_client = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "http://127.0.0.1:8000")
+SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "https://navistha-ampere.hf.space")
 
 # Read server URL from environment variable — set AMPERE_SERVER_URL for cloud deployment
 SYSTEM_PROMPT = """You are EcoRoute, an advanced AI EV Dispatcher. 
