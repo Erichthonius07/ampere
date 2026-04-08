@@ -101,6 +101,8 @@ def run_agent(scenario="task_1_blr_cbe"):
         obs = step_result.observation
         done = step_result.done
 
+        print(f"[START] task={scenario}", flush=True)
+
         step_count = 0
         total_reward = 0.0
 
