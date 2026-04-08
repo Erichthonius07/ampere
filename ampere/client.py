@@ -53,36 +53,36 @@ class AmpereEnv(EnvClient[EVAction, EVObservation, State]):
 
         nav = obs_data.get("navigation_system", {})
         gps = GPSDashboard(
-            distance_to_final_destination_km = nav.get("distance_to_final_destination_km", 0),
-            distance_to_nearest_charger_km   = nav.get("distance_to_nearest_charger_km", 0),
-            charger_reliability_estimate     = nav.get("charger_reliability_estimate", 1.0),
-            optimal_heading                  = nav.get("optimal_heading", ""),
+            distance_to_final_destination_km=nav.get("distance_to_final_destination_km", 0),
+            distance_to_nearest_charger_km=nav.get("distance_to_nearest_charger_km", 0),
+            charger_reliability_estimate=nav.get("charger_reliability_estimate", 1.0),
+            optimal_heading=nav.get("optimal_heading", ""),
         )
 
         observation = EVObservation(
-            current_location       = obs_data.get("current_location", ""),
-            battery_percentage     = obs_data.get("battery_percentage", 100.0),
-            fatigue_points         = obs_data.get("fatigue_points", 0.0),
-            time_elapsed_minutes   = obs_data.get("time_elapsed_minutes", 0.0),
-            available_routes       = routes,
-            navigation_system      = gps,
-            battery_warning        = obs_data.get("battery_warning", "OK"),
-            can_reach_next_charger = obs_data.get("can_reach_next_charger", True),
-            estimated_range_km     = obs_data.get("estimated_range_km", 0),
-            done                   = payload.get("done", False),
-            reward                 = payload.get("reward", 0.0),
-            metadata               = obs_data.get("metadata", {}),
+            current_location=obs_data.get("current_location", ""),
+            battery_percentage=obs_data.get("battery_percentage", 100.0),
+            fatigue_points=obs_data.get("fatigue_points", 0.0),
+            time_elapsed_minutes=obs_data.get("time_elapsed_minutes", 0.0),
+            available_routes=routes,
+            navigation_system=gps,
+            battery_warning=obs_data.get("battery_warning", "OK"),
+            can_reach_next_charger=obs_data.get("can_reach_next_charger", True),
+            estimated_range_km=obs_data.get("estimated_range_km", 0),
+            done=payload.get("done", False),
+            reward=payload.get("reward", 0.0),
+            metadata=obs_data.get("metadata", {}),
         )
 
         return StepResult(
-            observation = observation,
-            reward      = payload.get("reward", 0.0),
-            done        = payload.get("done", False),
+            observation=observation,
+            reward=payload.get("reward", 0.0),
+            done=payload.get("done", False),
         )
 
     def _parse_state(self, payload: Dict) -> State:
         """Parse server response into State object."""
         return State(
-            episode_id = payload.get("episode_id"),
-            step_count = payload.get("step_count", 0),
+            episode_id=payload.get("episode_id"),
+            step_count=payload.get("step_count", 0),
         )

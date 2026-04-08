@@ -59,7 +59,6 @@ VEHICLE = {
     "max_charge_rate_kw":         50.0,
 }
 
-# Default scenario if none specified
 DEFAULT_SCENARIO = "task_1_blr_cbe"
 
 # Resolve graph_data.json relative to this file
@@ -85,10 +84,10 @@ class AmpereEnvironment(Environment):
       task_3_knp_slg — deadline 1680 min, max_steps 50
 
     Grader scores:
-      1.0  — reached destination on time
-      0.3–0.6 — reached but late (interpolated over 120 min window)
-      0.3  — reached but 120+ min late
-      0.0  — stranded, crashed, or timed out
+      1.0      — reached destination on time
+      0.3–0.6  — reached but late (interpolated over 120 min window)
+      0.3      — reached but 120+ min late
+      0.0      — stranded, crashed, or timed out
     """
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
@@ -99,7 +98,6 @@ class AmpereEnvironment(Environment):
         # Load graph data once at startup
         graph_path = GRAPH_DATA_PATH
         if not os.path.exists(graph_path):
-            # Fallback: search one level up
             graph_path = os.path.join(_HERE, "graph_data.json")
         with open(graph_path, "r") as f:
             self._all_graph_data = json.load(f)
@@ -125,9 +123,6 @@ class AmpereEnvironment(Environment):
         """
         Reset the environment for a new episode.
 
-        The openenv evaluator calls this with scenario_key matching
-        the task name defined in openenv.yaml.
-
         Args:
             scenario_key: One of:
                 task_1_blr_cbe  (easy,   365km,  deadline 420min,  100% battery)
@@ -141,7 +136,6 @@ class AmpereEnvironment(Environment):
         self._random = np.random.default_rng()
         self._scenario_key = scenario_key
 
-        # Load scenario from graph data
         scenario = self._all_graph_data.get(scenario_key)
         if scenario is None:
             available = [k for k in self._all_graph_data if k.startswith("task_")]
@@ -152,10 +146,8 @@ class AmpereEnvironment(Environment):
 
         # Build directed graph from JSON
         self.map_graph = nx.DiGraph()
-
         for node_name, node_data in scenario["nodes"].items():
             self.map_graph.add_node(node_name, **node_data)
-
         for edge in scenario["edges"]:
             self.map_graph.add_edge(
                 edge["from"],
@@ -164,15 +156,15 @@ class AmpereEnvironment(Environment):
                 terrain=edge.get("terrain", "flat"),
             )
 
-        # Set episode variables from scenario config
-        self.current_node    = scenario["start_node"]
-        self.end_node        = scenario["end_node"]
-        self.battery         = float(scenario.get("initial_battery", 100.0))
-        self.fatigue         = 0.0
-        self.time_elapsed    = 0.0
-        self.deadline_mins   = float(scenario["deadline_mins"])
-        self.max_steps       = int(scenario["max_steps"])
-        self.stochastic      = bool(scenario.get("stochastic", False))
+        # Set episode variables
+        self.current_node         = scenario["start_node"]
+        self.end_node             = scenario["end_node"]
+        self.battery              = float(scenario.get("initial_battery", 100.0))
+        self.fatigue              = 0.0
+        self.time_elapsed         = 0.0
+        self.deadline_mins        = float(scenario["deadline_mins"])
+        self.max_steps            = int(scenario["max_steps"])
+        self.stochastic           = bool(scenario.get("stochastic", False))
         self.consecutive_errors   = 0
         self.current_step_count   = 0
 
@@ -185,18 +177,14 @@ class AmpereEnvironment(Environment):
         Execute one action in the environment.
 
         Sequence:
-          1. LLM Firewall (waypoint + speed_mode + step limit validation)
-          2. Physics (battery drain, drive time, fatigue update)
+          1. LLM Firewall (waypoint + speed_mode + step limit)
+          2. Physics (battery drain, drive time, fatigue)
           3. Charging (BMS-limited, stochastic failure in Task 3)
-          4. Rest (passive fatigue recovery)
+          4. Rest (fatigue recovery)
           5. Value clamping
           6. Terminal condition checks
           7. 8-component reward calculation
           8. Observation construction
-
-        Args:
-            action: EVAction with next_waypoint, speed_mode,
-                    charge_minutes, rest_minutes
 
         Returns:
             EVObservation with reward and done flag set.
@@ -207,7 +195,6 @@ class AmpereEnvironment(Environment):
 
         # ── LLM Firewall ──────────────────────────────────────────────────────
 
-        # Guard: graph must be loaded
         if self.map_graph is None:
             raise RuntimeError("Call reset() before step()")
 
@@ -258,7 +245,11 @@ class AmpereEnvironment(Environment):
 
         # ── Physics ───────────────────────────────────────────────────────────
 
-        edge_data  = self.map_graph[self.current_node][action.next_waypoint]
+        # Save previous state for reward calculation
+        prev_node    = self.current_node
+        prev_battery = self.battery
+
+        edge_data   = self.map_graph[self.current_node][action.next_waypoint]
         distance_km = edge_data["distance_km"]
         terrain     = edge_data.get("terrain", "flat")
 
@@ -277,23 +268,21 @@ class AmpereEnvironment(Environment):
             energy_used_wh / (VEHICLE["battery_capacity_kwh"] * 1000)
         ) * 100.0
 
-        prev_battery = self.battery
         self.battery -= battery_drained_pct
 
-        # Drive time and fatigue accumulation
-        drive_time_mins  = (distance_km / speed_kmh) * 60.0
-        self.time_elapsed += drive_time_mins
-        self.fatigue      += drive_time_mins   # +1 fatigue per minute driving
+        # Drive time and fatigue
+        drive_time_mins    = (distance_km / speed_kmh) * 60.0
+        self.time_elapsed  += drive_time_mins
+        self.fatigue       += drive_time_mins   # +1 fatigue per minute driving
 
-        # Move vehicle to new node
-        prev_node = self.current_node
-        self.current_node = action.next_waypoint
-        time_spent_this_step = drive_time_mins
+        # Move vehicle
+        self.current_node      = action.next_waypoint
+        time_spent_this_step   = drive_time_mins
 
         # ── Charging ──────────────────────────────────────────────────────────
 
-        node_data  = self.map_graph.nodes[self.current_node]
-        charger_kw = node_data.get("charger_kw", 0)
+        node_data   = self.map_graph.nodes[self.current_node]
+        charger_kw  = node_data.get("charger_kw", 0)
         reliability = node_data.get("reliability", 1.0)
         charger_worked = False
 
@@ -313,16 +302,15 @@ class AmpereEnvironment(Environment):
                 self.battery = min(100.0, self.battery + charge_gained)
 
             # Time passes and fatigue recovers regardless of charger status
-            # (driver is sitting idle either way — the POMDP sting is battery only)
-            self.time_elapsed += action.charge_minutes
-            self.fatigue      -= action.charge_minutes * 3.0
+            self.time_elapsed  += action.charge_minutes
+            self.fatigue       -= action.charge_minutes * 3.0
             time_spent_this_step += action.charge_minutes
 
         # ── Rest ──────────────────────────────────────────────────────────────
 
         if action.rest_minutes > 0:
-            self.time_elapsed += action.rest_minutes
-            self.fatigue      -= action.rest_minutes * 3.0
+            self.time_elapsed  += action.rest_minutes
+            self.fatigue       -= action.rest_minutes * 3.0
             time_spent_this_step += action.rest_minutes
 
         # ── Clamp values ──────────────────────────────────────────────────────
@@ -341,33 +329,26 @@ class AmpereEnvironment(Environment):
 
         # ── Reward (8 components) ─────────────────────────────────────────────
 
-        # ── Reward (8 components) ─────────────────────────────────────────────
-
         reward = 0.0
 
-        # 1 & 2. Progress signal (Potential-based shaping)
-        # Replaces the flat +10.0 and absolute remaining distance penalty
+        # 1 & 2. Potential-based progress shaping
+        # Rewards moving closer, penalises backtracking/looping
         try:
             prev_remaining_km = nx.shortest_path_length(
-                    self.map_graph,
-                    prev_node,
-                    self.end_node,
-                    weight="distance_km",
+                self.map_graph, prev_node, self.end_node,
+                weight="distance_km",
             )
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             prev_remaining_km = 9999
-            
+
         try:
             current_remaining_km = nx.shortest_path_length(
-                    self.map_graph,
-                    self.current_node,
-                    self.end_node,
-                    weight="distance_km",
+                self.map_graph, self.current_node, self.end_node,
+                weight="distance_km",
             )
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             current_remaining_km = 9999
 
-        # Reward moving closer, penalize moving backward (looping/ping-ponging)
         if prev_remaining_km != 9999 and current_remaining_km != 9999:
             reward += (prev_remaining_km - current_remaining_km) * 0.2
 
@@ -376,7 +357,7 @@ class AmpereEnvironment(Environment):
 
         # 4. Battery efficiency — penalise aggressive driving
         battery_used = prev_battery - self.battery
-        reward -= 0.05 * max(0.0, battery_used)        #only penalise drain, not gain
+        reward -= 0.05 * max(0.0, battery_used)
 
         # 5. Fatigue management — proactive penalty before crash
         if self.fatigue > 200:
@@ -389,17 +370,16 @@ class AmpereEnvironment(Environment):
         if self.battery < 20.0 and nearest_km > 100:
             reward -= 5.0
 
-        # 7. Smart charging — dynamic threshold based on distance to nearest charger
-        eco_drain_pct_per_km = (VEHICLE["base_consumption_wh_per_km"] / (VEHICLE["battery_capacity_kwh"] * 1000)) * 100.0
-        safe_battery_threshold = (nearest_km * eco_drain_pct_per_km) + 15.0 # Distance to charger + 15% safety buffer
-        if action.charge_minutes > 0 and prev_battery < safe_battery_threshold and charger_worked:
-                reward += 2.0
+        # 7. Smart charging — reward charging when battery is strategically low
+        # Simple threshold: charge when below 40% and charger worked
+        if action.charge_minutes > 0 and prev_battery < 40.0 and charger_worked:
+            reward += 2.0
 
-        # 8. Destination optimisation — continuous reward curve
+        # 8. Destination optimisation — smooth bonus curve
+        # Peak +20 at exactly 10% battery, tapers to 0 as deviation increases
         if reached:
             ideal_battery = 10.0
             battery_diff = abs(self.battery - ideal_battery)
-            # Smoothly scale from +20.0 down to 0.0 as battery deviates from the 10% ideal
             destination_bonus = max(0.0, 20.0 - (0.5 * battery_diff))
             reward += destination_bonus
 
@@ -441,11 +421,8 @@ class AmpereEnvironment(Environment):
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _build_observation(self) -> EVObservation:
-        """
-        Build EVObservation from current state.
-        Runs Dijkstra for GPS dashboard fields.
-        """
-        # Routes available from current position
+        """Build EVObservation from current state using NetworkX Dijkstra."""
+
         routes = []
         for neighbor in self.map_graph.successors(self.current_node):
             edge = self.map_graph[self.current_node][neighbor]
@@ -459,7 +436,6 @@ class AmpereEnvironment(Environment):
                 terrain           = edge.get("terrain", "flat"),
             ))
 
-        # Distance to destination via shortest path
         try:
             dist_to_end = int(nx.shortest_path_length(
                 self.map_graph, self.current_node, self.end_node,
@@ -468,7 +444,6 @@ class AmpereEnvironment(Environment):
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             dist_to_end = 9999
 
-        # Nearest charger info
         nearest_km, nearest_reliability = self._get_nearest_charger_info()
 
         gps = GPSDashboard(
@@ -488,29 +463,41 @@ class AmpereEnvironment(Environment):
 
         # Can reach nearest charger at eco speed?
         eco_drain_pct_per_km = (
-            VEHICLE["base_consumption_wh_per_km"] * 1.0   # drag=1 at eco
+            VEHICLE["base_consumption_wh_per_km"]
             / (VEHICLE["battery_capacity_kwh"] * 1000)
             * 100.0
         )
-        max_range_eco = (self.battery / eco_drain_pct_per_km) if eco_drain_pct_per_km > 0 else 0
+        max_range_eco = (
+            self.battery / eco_drain_pct_per_km
+            if eco_drain_pct_per_km > 0 else 0
+        )
         can_reach = nearest_km <= max_range_eco
 
-        # Estimated range at cruise speed (sensible default)
-        cruise_drag      = (SPEED_MODES["cruise"] / VEHICLE["optimal_speed_kmh"]) ** 2
-        cruise_wh_per_km = VEHICLE["base_consumption_wh_per_km"] * cruise_drag
+       # Estimated range at eco speed (Safest assumption for the dashboard)
+        eco_drag         = (SPEED_MODES["eco"] / VEHICLE["optimal_speed_kmh"]) ** 2
+        eco_wh_per_km    = VEHICLE["base_consumption_wh_per_km"] * eco_drag
+        
+        # Look ahead: If ANY available route is a mountain, apply the penalty to the dashboard estimate
+        worst_terrain_multiplier = 1.0
+        for r in routes:
+            if r.terrain == "mountain":
+                worst_terrain_multiplier = TERRAIN_MULTIPLIERS["mountain"]
+                break
+        
+        effective_wh_per_km = eco_wh_per_km * worst_terrain_multiplier
         remaining_wh     = (self.battery / 100.0) * (VEHICLE["battery_capacity_kwh"] * 1000)
-        estimated_range  = int(remaining_wh / cruise_wh_per_km) if cruise_wh_per_km > 0 else 0
+        estimated_range  = int(remaining_wh / effective_wh_per_km) if effective_wh_per_km > 0 else 0
 
         return EVObservation(
-            current_location      = self.current_node,
-            battery_percentage    = round(self.battery, 2),
-            fatigue_points        = round(self.fatigue, 2),
-            time_elapsed_minutes  = round(self.time_elapsed, 2),
-            available_routes      = routes,
-            navigation_system     = gps,
-            battery_warning       = warning,
-            can_reach_next_charger= can_reach,
-            estimated_range_km    = estimated_range,
+            current_location       = self.current_node,
+            battery_percentage     = round(self.battery, 2),
+            fatigue_points         = round(self.fatigue, 2),
+            time_elapsed_minutes   = round(self.time_elapsed, 2),
+            available_routes       = routes,
+            navigation_system      = gps,
+            battery_warning        = warning,
+            can_reach_next_charger = can_reach,
+            estimated_range_km     = estimated_range,
         )
 
     def _terminal_obs(self, reward: float, error: str, grader_score: float) -> EVObservation:
@@ -527,10 +514,7 @@ class AmpereEnvironment(Environment):
         return obs
 
     def _get_nearest_charger_info(self) -> tuple:
-        """
-        Returns (distance_km, reliability) to nearest charger node.
-        Excludes current node. Uses Dijkstra via NetworkX.
-        """
+        """Returns (distance_km, reliability) to nearest charger via Dijkstra."""
         nearest_km          = 9999.0
         nearest_reliability = 1.0
 
@@ -554,7 +538,6 @@ class AmpereEnvironment(Environment):
         return nearest_km, nearest_reliability
 
     def _get_nearest_charger_km(self) -> float:
-        """Convenience wrapper — distance only."""
         km, _ = self._get_nearest_charger_info()
         return km
 
@@ -567,11 +550,10 @@ class AmpereEnvironment(Environment):
     ) -> float:
         """
         Grader formula — produces score in [0.0, 1.0].
-
         Score table:
           1.0        — reached on time
-          0.60–0.30  — reached late, interpolated over 120-minute window
-          0.30       — reached but 120+ minutes late
+          0.60–0.30  — reached late, interpolated over a 20% deadline window
+          0.30       — reached but extremely late
           0.0        — any failure (crash, strand, timeout without reaching)
         """
         assert self.time_elapsed >= 0, "time_elapsed sanity check failed"
@@ -584,11 +566,12 @@ class AmpereEnvironment(Environment):
         if self.time_elapsed <= self.deadline_mins:
             return 1.0
 
-        # Late arrival — interpolate
+        # Late arrival — interpolate based on a 20% grace window
         minutes_late = self.time_elapsed - self.deadline_mins
+        allowed_late_window = self.deadline_mins * 0.20
 
-        if minutes_late >= 120:
+        if minutes_late >= allowed_late_window:
             return 0.3
 
-        grade = 0.6 - (0.3 * (minutes_late / 120.0))
+        grade = 0.6 - (0.3 * (minutes_late / allowed_late_window))
         return round(grade, 2)
