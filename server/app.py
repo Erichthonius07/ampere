@@ -53,15 +53,13 @@ def health():
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):
+    """Entry point for direct execution via uv run or python -m."""
     import uvicorn
     uvicorn.run(app, host=host, port=port)
 
-
 if __name__ == "__main__":
     import argparse
-
-    parser = argparse.ArgumentParser(description="Run the Ampere EV environment server.")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host")
-    parser.add_argument("--port", type=int, default=8000, help="Bind port")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    main(host=args.host, port=args.port)
+    main(port=args.port) 
