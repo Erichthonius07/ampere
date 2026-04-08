@@ -6,7 +6,10 @@ from client import AmpereEnv
 from models import EVAction
 
 # Initialize the LLM Client
-llm_client = OpenAI()
+llm_client = OpenAI(
+    api_key=os.environ.get("XAI_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
+)
 
 # Read server URL from environment variable — set AMPERE_SERVER_URL for cloud deployment
 SERVER_URL = os.environ.get("AMPERE_SERVER_URL", "http://localhost:8000")
@@ -53,7 +56,7 @@ def get_action_from_llm(obs) -> EVAction | None:
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = llm_client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
@@ -85,7 +88,7 @@ def run_agent(scenario="task_1_blr_cbe"):
     print(f"\n🚀 Booting EcoRoute Agent for Scenario: {scenario}")
     print(f"Connecting to OpenEnv Server at {SERVER_URL}...\n")
 
-    with AmpereEnv(base_url=SERVER_URL) as env:
+    with AmpereEnv(base_url=SERVER_URL).sync() as env:
 
         # 1. Start the Episode
         step_result = env.reset(scenario_key=scenario)

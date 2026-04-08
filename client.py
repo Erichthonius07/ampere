@@ -6,7 +6,7 @@ from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
 
-from .models import EVAction, EVObservation
+from models import EVAction, EVObservation
 
 
 class AmpereEnv(EnvClient[EVAction, EVObservation, State]):
@@ -44,7 +44,7 @@ class AmpereEnv(EnvClient[EVAction, EVObservation, State]):
         """Parse server response into StepResult[EVObservation]."""
         obs_data = payload.get("observation", {})
 
-        from .models import GPSDashboard, RouteOption
+        from models import GPSDashboard, RouteOption
 
         routes = [
             RouteOption(**r)
