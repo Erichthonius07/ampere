@@ -17,7 +17,6 @@ Usage:
 
 import sys
 import os
-import json
 
 # Ensure the package root is on sys.path so `models` and `server` resolve
 # correctly whether the app is launched from the repo root or via Dockerfile.
@@ -37,12 +36,6 @@ app = create_app(
     max_concurrent_envs=1,
 )
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-json_path = os.path.join(current_dir, "..", "graph_data.json")
-
-with open(json_path, "r") as f:
-    graph_data = json.load(f)
-
 @app.get("/")
 def root():
     return {"status": "ok"}
@@ -57,9 +50,9 @@ def main(host: str = "0.0.0.0", port: int = 8000):
     import uvicorn
     uvicorn.run(app, host=host, port=port)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    main(port=args.port) 
+    main(port=args.port)
