@@ -84,68 +84,50 @@ def get_action_from_llm(obs) -> EVAction | None:
             print(f"   ⚠️  Attempt {attempt}: {e}. Retrying...", file=sys.stderr)
     return None
 
-# ── Autopilot Override ──────────────────────────────────────────────────────
+## ── Autopilot Override ──────────────────────────────────────────────────────
 def apply_autopilot(action: EVAction, obs) -> EVAction:
     chosen_route = next(
         (r for r in obs.available_routes if r.destination_node == action.next_waypoint),
         None
     )
+    
+    # -- 1. Terrain & Survival Speed --
     if chosen_route and getattr(chosen_route, 'terrain', '') == "mountain":
         action.speed_mode = "eco"
     else:
-        if obs.battery_percentage < 25:
-            action.speed_mode = "eco"
+        if obs.battery_percentage < 30:
+            action.speed_mode = "eco"  # Desperate times call for eco mode
         else:
             action.speed_mode = "cruise"
 
-    # -- 2. Charging Logic --
+    # -- 2. Blind Survival Charging --
+    # Don't check the map. Just look at the battery and charge if we are dying.
     action.charge_minutes = 0
-    if chosen_route:
-        dist_remaining = obs.navigation_system.distance_to_final_destination_km
-        if chosen_route.has_fast_charger:
-            if dist_remaining > 60:
-                if obs.battery_percentage < 45:
-                    action.charge_minutes = 25
-                elif 45 <= obs.battery_percentage < 60:
-                    action.charge_minutes = 10
-            else:
-                if obs.battery_percentage < 20:
-                    action.charge_minutes = 15
-        elif chosen_route.has_slow_charger:
-            if obs.battery_percentage < 35:
-                action.charge_minutes = 120
-            elif 35 <= obs.battery_percentage < 55:
-                action.charge_minutes = 60
+    dist_remaining = obs.navigation_system.distance_to_final_destination_km
+    
+    if dist_remaining > 50:  # If we are far from the finish line...
+        if obs.battery_percentage < 25:
+            action.charge_minutes = 120  # Emergency massive charge (2 hours)
+        elif 25 <= obs.battery_percentage < 45:
+            action.charge_minutes = 60   # Standard survival charge (1 hour)
+        elif 45 <= obs.battery_percentage < 60:
+            action.charge_minutes = 20   # Quick top-off
+    else:
+        # Final stretch to the finish line
+        if obs.battery_percentage < 15:
+            action.charge_minutes = 30
 
-    # -- 3. Fatigue Management (NOW ACCOUNTS FOR CHARGING!) --
+    # -- 3. Smart Fatigue Management --
     # Calculate what the fatigue will be AFTER the charge time we just scheduled
     expected_fatigue_after_charge = obs.fatigue_points - (action.charge_minutes * 3)
     
     action.rest_minutes = 0
-    
-    # Only add EXTRA rest if the charge time wasn't enough to cure the fatigue
     if expected_fatigue_after_charge > 200:
         action.rest_minutes = 20
     elif expected_fatigue_after_charge > 150 and chosen_route and getattr(chosen_route, 'has_rest_facility', False):
         action.rest_minutes = 10
 
     return action
-
-# ── Score Extraction ────────────────────────────────────────────────────────
-def extract_numeric_score(obs, total_reward) -> float:
-    if obs.metadata and "final_grader_score" in obs.metadata:
-        return float(obs.metadata.get("final_grader_score", 0.01))
-    heading = getattr(obs.navigation_system, "optimal_heading", "")
-    if heading and "SCORE" in heading:
-        try:
-            return float(heading.split("SCORE:")[1].split("/")[0].strip())
-        except:
-            pass
-    
-    # Fallback clamp to ensure it strictly respects the >0 and <1 rule
-    if total_reward > 0:
-        return 0.99
-    return 0.01
 
 # ── Main Agent Loop ─────────────────────────────────────────────────────────
 def run_agent(scenario: str):
