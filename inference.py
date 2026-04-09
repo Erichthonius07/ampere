@@ -90,27 +90,43 @@ def apply_autopilot(action: EVAction, obs) -> EVAction:
         (r for r in obs.available_routes if r.destination_node == action.next_waypoint),
         None
     )
-    if chosen_route and chosen_route.terrain == "mountain":
+    if chosen_route and getattr(chosen_route, 'terrain', '') == "mountain":
         action.speed_mode = "eco"
     else:
-        action.speed_mode = "cruise"
-
-    action.charge_minutes = 0
-    if chosen_route and chosen_route.has_fast_charger:
-        dist_remaining = obs.navigation_system.distance_to_final_destination_km
-        if dist_remaining > 60:
-            if obs.battery_percentage < 40:
-                action.charge_minutes = 25
-            elif 40 <= obs.battery_percentage < 60:
-                action.charge_minutes = 10
+        if obs.battery_percentage < 25:
+            action.speed_mode = "eco"
         else:
-            if obs.battery_percentage < 20:
-                action.charge_minutes = 15
+            action.speed_mode = "cruise"
 
+    # -- 2. Charging Logic --
+    action.charge_minutes = 0
+    if chosen_route:
+        dist_remaining = obs.navigation_system.distance_to_final_destination_km
+        if chosen_route.has_fast_charger:
+            if dist_remaining > 60:
+                if obs.battery_percentage < 45:
+                    action.charge_minutes = 25
+                elif 45 <= obs.battery_percentage < 60:
+                    action.charge_minutes = 10
+            else:
+                if obs.battery_percentage < 20:
+                    action.charge_minutes = 15
+        elif chosen_route.has_slow_charger:
+            if obs.battery_percentage < 35:
+                action.charge_minutes = 120
+            elif 35 <= obs.battery_percentage < 55:
+                action.charge_minutes = 60
+
+    # -- 3. Fatigue Management (NOW ACCOUNTS FOR CHARGING!) --
+    # Calculate what the fatigue will be AFTER the charge time we just scheduled
+    expected_fatigue_after_charge = obs.fatigue_points - (action.charge_minutes * 3)
+    
     action.rest_minutes = 0
-    if obs.fatigue_points > 200:
+    
+    # Only add EXTRA rest if the charge time wasn't enough to cure the fatigue
+    if expected_fatigue_after_charge > 200:
         action.rest_minutes = 20
-    elif obs.fatigue_points > 150 and chosen_route and getattr(chosen_route, 'has_rest_facility', False):
+    elif expected_fatigue_after_charge > 150 and chosen_route and getattr(chosen_route, 'has_rest_facility', False):
         action.rest_minutes = 10
 
     return action
