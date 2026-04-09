@@ -57,6 +57,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 
 
 # ── LLM Action ──────────────────────────────────────────────────────────────
+# ── LLM Action & Integrated Autopilot ───────────────────────────────────────
 def get_action_from_llm(obs) -> EVAction | None:
     valid_waypoints = [r.destination_node for r in obs.available_routes]
     user_prompt = (
@@ -76,50 +77,44 @@ def get_action_from_llm(obs) -> EVAction | None:
             )
             llm_json = json.loads(response.choices[0].message.content)
             action = EVAction(**llm_json)
+            
             if action.next_waypoint not in valid_waypoints:
                 print(f"   ⚠️  Attempt {attempt}: Invalid waypoint. Retrying...", file=sys.stderr)
                 continue
+
+            # ==========================================
+            # 🛡️ THE PARANOID ROAD-TRIPPER OVERRIDE 🛡️
+            # ==========================================
+            
+            # 1. ALWAYS TOP OFF. If we are below 85%, calculate minutes to reach ~95%.
+            # Assuming fast chargers give ~1% per min. Slow chargers give less, 
+            # but asking for this much time guarantees we soak up enough juice to survive.
+            if obs.battery_percentage < 85.0:
+                charge_needed = int(95.0 - obs.battery_percentage)
+                if charge_needed > 0:
+                    print(f"   [AUTOPILOT] Topping off battery. Forcing {charge_needed} mins of charge.", file=sys.stderr)
+                    action.charge_minutes = max(action.charge_minutes, charge_needed)
+
+            # 2. Force ECO mode if we are dropping low, meaning the gaps are huge.
+            if obs.battery_percentage < 55.0:
+                print(f"   [AUTOPILOT] Battery dropped below 55%. Forcing ECO mode to survive the gap.", file=sys.stderr)
+                action.speed_mode = "eco"
+            
+            # 3. The Strict Rest Rule (Matches charge time to prevent timeout bugs)
+            if action.charge_minutes > 0:
+                action.rest_minutes = action.charge_minutes
+            else:
+                # If we aren't charging, check if the driver is exhausted
+                if obs.fatigue_points > 150:
+                    action.rest_minutes = 20
+
             return action
+
         except Exception as e:
             print(f"   ⚠️  Attempt {attempt}: {e}. Retrying...", file=sys.stderr)
     return None
 
-# ── Autopilot Override ──────────────────────────────────────────────────────
 def apply_autopilot(action: EVAction, obs) -> EVAction:
-    chosen_route = next(
-        (r for r in obs.available_routes if r.destination_node == action.next_waypoint),
-        None
-    )
-    
-    # -- 1. THE ULTIMATE SURVIVALHACK --
-    # Tasks 2 and 3 are filled with "Mountain" terrain and "Charger Deserts".
-    # Driving at 'cruise' (70km/h) burns 50% battery in a single jump.
-    # Force 'eco' (50km/h) permanently to guarantee we make it to the next charger.
-    action.speed_mode = "eco"
-
-    # -- 2. Desperate Charging --
-    # We still beg the environment to charge if we are low, hoping the node has a plug.
-    action.charge_minutes = 0
-    dist_remaining = obs.navigation_system.distance_to_final_destination_km
-    
-    if dist_remaining > 50:  
-        if obs.battery_percentage < 35:
-            action.charge_minutes = 120  # Praying for a 2-hour slow charge
-        elif 35 <= obs.battery_percentage < 55:
-            action.charge_minutes = 60   
-    else:
-        if obs.battery_percentage < 15:
-            action.charge_minutes = 30
-
-    # -- 3. Smart Fatigue Management --
-    expected_fatigue_after_charge = obs.fatigue_points - (action.charge_minutes * 3)
-    
-    action.rest_minutes = 0
-    if expected_fatigue_after_charge > 200:
-        action.rest_minutes = 20
-    elif expected_fatigue_after_charge > 150 and chosen_route and getattr(chosen_route, 'has_rest_facility', False):
-        action.rest_minutes = 10
-
     return action
 
 # ── Score Extraction ────────────────────────────────────────────────────────
