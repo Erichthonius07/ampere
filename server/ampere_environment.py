@@ -546,7 +546,7 @@ class AmpereEnvironment(Environment):
             return 0.01
 
         # 2. Perfect Score (Must be STRICTLY < 1)
-        if self.time_elapsed <= self.deadline_mins:
+        if self.time_elapsed <= self.deadline_mins and self.time_elapsed >= 1.2 * self.deadline_mins:
             return 0.99
 
         # 3. The Late Tax 
