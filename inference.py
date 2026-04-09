@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 from typing import List, Optional
@@ -7,7 +8,6 @@ from client import AmpereEnv
 from models import EVAction
 
 # ── Config ─────────────────────────────────────────────────────────────────
-# Strict compliance with Hackathon requirements
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("XAI_API_KEY") or "dummy_token"
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
@@ -39,7 +39,7 @@ Output ONLY valid JSON matching this schema exactly:
 
 MAX_RETRIES = 3
 
-# ── Strict Grader Logging Functions ─────────────────────────────────────────
+# ── Strict Grader Logging Functions (Goes to stdout) ────────────────────────
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
@@ -77,11 +77,11 @@ def get_action_from_llm(obs) -> EVAction | None:
             llm_json = json.loads(response.choices[0].message.content)
             action = EVAction(**llm_json)
             if action.next_waypoint not in valid_waypoints:
-                print(f"[DEBUG] Attempt {attempt}: Invalid waypoint. Retrying...", flush=True)
+                print(f"   ⚠️  Attempt {attempt}: Invalid waypoint. Retrying...", file=sys.stderr)
                 continue
             return action
         except Exception as e:
-            print(f"[DEBUG] Attempt {attempt}: {e}. Retrying...", flush=True)
+            print(f"   ⚠️  Attempt {attempt}: {e}. Retrying...", file=sys.stderr)
     return None
 
 # ── Autopilot Override ──────────────────────────────────────────────────────
@@ -125,11 +125,12 @@ def extract_numeric_score(obs, total_reward) -> float:
             return float(heading.split("SCORE:")[1].split("/")[0].strip())
         except:
             pass
-    return max(0.0, min(1.0, float(total_reward))) # fallback clamp to [0,1]
+    return max(0.0, min(1.0, float(total_reward))) 
 
 # ── Main Agent Loop ─────────────────────────────────────────────────────────
 def run_agent(scenario: str):
-    print(f"[DEBUG] Booting EcoRoute Agent for Scenario: {scenario}", flush=True)
+    print(f"\n🚀 Booting EcoRoute Agent for Scenario: {scenario}", file=sys.stderr)
+    print(f"🔗 Connecting to OpenEnv Server at {SERVER_URL}...\n", file=sys.stderr)
 
     with AmpereEnv(base_url=SERVER_URL).sync() as env:
         step_result = env.reset(scenario_key=scenario)
@@ -148,16 +149,31 @@ def run_agent(scenario: str):
             step_count += 1
             error = None
 
+            # --- BEAUTIFUL UI (Routed to stderr) ---
+            print("=" * 60, file=sys.stderr)
+            print(f"📍 STEP {step_count} | Current Location: {obs.current_location}", file=sys.stderr)
+            print(f"🔋 Battery: {obs.battery_percentage:.1f}%  | ⚠️ Warning: {obs.battery_warning}", file=sys.stderr)
+            print(f"🥱 Fatigue: {obs.fatigue_points:.0f}/300 | ⏱️ Elapsed: {obs.time_elapsed_minutes:.0f} mins", file=sys.stderr)
+            print(f"🗺️  Remaining: {obs.navigation_system.distance_to_final_destination_km} km", file=sys.stderr)
+            print(f"🛣️  Options: {[r.destination_node for r in obs.available_routes]}", file=sys.stderr)
+            print("-" * 60, file=sys.stderr)
+
+            print("🧠 Thinking...", file=sys.stderr)
             action = get_action_from_llm(obs)
             if action is None:
                 error = "LLM failed to return valid action"
-                # If LLM completely fails, log the failure step before breaking so the grader doesn't desync
+                print("❌ Agent could not decide. Aborting episode.", file=sys.stderr)
                 log_step(step=step_count, action="null", reward=0.0, done=True, error=error)
                 break
 
             action = apply_autopilot(action, obs)
             
-            # Format action as a single-line string to prevent scraper crashes
+            print(f"⚡ ACTION TAKEN:", file=sys.stderr)
+            print(f"   ► Drive to: {action.next_waypoint}", file=sys.stderr)
+            print(f"   ► Speed:    {action.speed_mode}", file=sys.stderr)
+            print(f"   ► Charge:   {action.charge_minutes} mins", file=sys.stderr)
+            print(f"   ► Rest:     {action.rest_minutes} mins", file=sys.stderr)
+
             action_str = json.dumps(action.model_dump(), separators=(',', ':'))
 
             try:
@@ -173,24 +189,31 @@ def run_agent(scenario: str):
             total_reward += reward
             rewards.append(reward)
             
+            print(f"\n💰 Reward this step: {reward:+.2f} (Total: {total_reward:.2f})\n", file=sys.stderr)
+
             # 2. REQUIRED GRADER OUTPUT: Step tag
             log_step(step=step_count, action=action_str, reward=reward, done=done, error=error)
             time.sleep(0.5)
 
+        # --- BEAUTIFUL EPISODE SUMMARY (Routed to stderr) ---
+        print("🏁 === EPISODE COMPLETE === 🏁", file=sys.stderr)
+        print(f"   Time Elapsed: {obs.time_elapsed_minutes:.1f} mins", file=sys.stderr)
+        print(f"   Steps Taken:  {step_count}", file=sys.stderr)
+        print(f"   Total Reward: {total_reward:.2f}", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+
         # 3. REQUIRED GRADER OUTPUT: End tag
         score = extract_numeric_score(obs, total_reward)
-        success = score >= 0.5  # Assuming a score >= 0.5 means the episode was technically a success
+        success = score >= 0.5 
 
         log_end(success=success, steps=step_count, score=score, rewards=rewards)
 
 
 if __name__ == "__main__":
-    import sys
     
     if not API_KEY or API_KEY == "dummy_token":
-        print("[DEBUG] WARNING: No valid API Key found. Run this locally using: export API_KEY='your-key'", flush=True)
+        print("⚠️ WARNING: No valid API Key found. Run this locally using: export API_KEY='your-key'", file=sys.stderr)
 
-    # If the Grader passes a specific TASK_NAME environment variable, run only that.
     grader_task = os.getenv("TASK_NAME")
     
     if grader_task:
@@ -198,8 +221,6 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1:
         tasks_to_run = [sys.argv[1]]
     else:
-        # Otherwise, run all 3 of your tasks sequentially! 
-        # IMPORTANT: Make sure these string keys EXACTLY match the keys in your graph_data.json
         tasks_to_run = [
             "task_1_blr_cbe",
             "task_2_gwh_gtk", 
@@ -208,4 +229,4 @@ if __name__ == "__main__":
 
     for t in tasks_to_run:
         run_agent(t)
-        time.sleep(2) # Give the connection a brief rest between runs
+        time.sleep(2)
