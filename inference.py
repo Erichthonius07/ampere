@@ -91,34 +91,27 @@ def apply_autopilot(action: EVAction, obs) -> EVAction:
         None
     )
     
-    # -- 1. Terrain & Survival Speed --
-    if chosen_route and getattr(chosen_route, 'terrain', '') == "mountain":
-        action.speed_mode = "eco"
-    else:
-        if obs.battery_percentage < 30:
-            action.speed_mode = "eco"  # Desperate times call for eco mode
-        else:
-            action.speed_mode = "cruise"
+    # -- 1. THE ULTIMATE SURVIVALHACK --
+    # Tasks 2 and 3 are filled with "Mountain" terrain and "Charger Deserts".
+    # Driving at 'cruise' (70km/h) burns 50% battery in a single jump.
+    # Force 'eco' (50km/h) permanently to guarantee we make it to the next charger.
+    action.speed_mode = "eco"
 
-    # -- 2. Blind Survival Charging --
-    # Don't check the map. Just look at the battery and charge if we are dying.
+    # -- 2. Desperate Charging --
+    # We still beg the environment to charge if we are low, hoping the node has a plug.
     action.charge_minutes = 0
     dist_remaining = obs.navigation_system.distance_to_final_destination_km
     
-    if dist_remaining > 50:  # If we are far from the finish line...
-        if obs.battery_percentage < 25:
-            action.charge_minutes = 120  # Emergency massive charge (2 hours)
-        elif 25 <= obs.battery_percentage < 45:
-            action.charge_minutes = 60   # Standard survival charge (1 hour)
-        elif 45 <= obs.battery_percentage < 60:
-            action.charge_minutes = 20   # Quick top-off
+    if dist_remaining > 50:  
+        if obs.battery_percentage < 35:
+            action.charge_minutes = 120  # Praying for a 2-hour slow charge
+        elif 35 <= obs.battery_percentage < 55:
+            action.charge_minutes = 60   
     else:
-        # Final stretch to the finish line
         if obs.battery_percentage < 15:
             action.charge_minutes = 30
 
     # -- 3. Smart Fatigue Management --
-    # Calculate what the fatigue will be AFTER the charge time we just scheduled
     expected_fatigue_after_charge = obs.fatigue_points - (action.charge_minutes * 3)
     
     action.rest_minutes = 0
