@@ -541,22 +541,22 @@ class AmpereEnvironment(Environment):
     ) -> float:
         assert self.time_elapsed >= 0, "time_elapsed sanity check failed"
 
-        if not reached or crashed or stranded:
-            return 0.0
+        # 1. Terminal Failures (Must be STRICTLY > 0)
+        if crashed or stranded or not reached or (timed_out and not reached):
+            return 0.01
 
-        # 🔥 THE 10% GRACE PERIOD
-        grace_period_mins = self.deadline_mins * 0.10
-        adjusted_deadline = self.deadline_mins + grace_period_mins
+        # 2. Perfect Score (Must be STRICTLY < 1)
+        if self.time_elapsed <= self.deadline_mins:
+            return 0.99
 
-        # If they finish within the deadline + 10% buffer, perfect score!
-        if self.time_elapsed <= adjusted_deadline:
-            return 1.0
-
-        # Calculate lateness based on the adjusted deadline
-        minutes_late = self.time_elapsed - adjusted_deadline
+        # 3. The Late Tax 
+        minutes_late = self.time_elapsed - self.deadline_mins
         
         if minutes_late >= 120:
-            return 0.3
-        else:
-            grade = 0.6 - (0.3 * (minutes_late / 120.0))
-            return round(grade, 2)
+            return 0.30
+            
+        grade = 0.60 - (0.30 * (minutes_late / 120.0))
+        
+        # Final safety clamp to absolutely guarantee it never rounds to 0.0 or 1.0
+        grade = max(0.01, min(0.99, grade))
+        return round(grade, 2)
