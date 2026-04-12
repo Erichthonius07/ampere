@@ -1,3 +1,13 @@
+---
+title: Ampere EV Dispatcher
+emoji: ⚡
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # ⚡ Ampere: EV Dispatcher AI for Indian Highways
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
