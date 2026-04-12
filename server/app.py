@@ -45,7 +45,7 @@ def health():
     return JSONResponse({"status": "healthy"})
 
 
-def main(host: str = "0.0.0.0", port: int = 8000):
+def main(host: str = "0.0.0.0", port: int = 7860):
     """
     Entry point for direct execution via uv run or python -m.
 
