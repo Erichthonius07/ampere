@@ -53,10 +53,10 @@ TERRAIN_MULTIPLIERS = {
 
 # Nexon EV Creative MR — real world specs
 VEHICLE = {
-    "battery_capacity_kwh":       30.0,
+    "battery_capacity_kwh":       45.0,
     "base_consumption_wh_per_km": 136.0,
     "optimal_speed_kmh":          50.0,
-    "max_charge_rate_kw":         50.0,
+    "max_charge_rate_kw":         60.0,   # Curvv supports 60kW DC
 }
 
 DEFAULT_SCENARIO = "task_1_blr_cbe"

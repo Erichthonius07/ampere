@@ -1,10 +1,10 @@
 {
   "vehicle": {
-    "name": "Tata Nexon EV Creative MR",
-    "battery_capacity_kwh": 30.0,
+    "name": "Tata Curvv EV Creative 45",
+    "battery_capacity_kwh": 45.0,
     "base_consumption_wh_per_km": 136.0,
     "optimal_speed_kmh": 50.0,
-    "max_charge_rate_kw": 50.0
+    "max_charge_rate_kw": 60.0
   },
 
   "speed_modes": {
@@ -32,7 +32,7 @@
     "nodes": {
       "Bangalore": {
         "charger_type": "fast_dc",
-        "charger_kw": 50,
+        "charger_kw": 60,
         "reliability": 1.0,
         "is_mountain": false,
         "has_rest_facility": true,
@@ -120,7 +120,7 @@
       },
       "Coimbatore": {
         "charger_type": "fast_dc",
-        "charger_kw": 50,
+        "charger_kw": 60,
         "reliability": 1.0,
         "is_mountain": false,
         "has_rest_facility": true,
@@ -128,7 +128,7 @@
       }
     },
     "edges": [
-      {"from": "Bangalore",  "to": "Hosur",       "distance_km": 40,  "terrain": "flat"},
+      {"from": "Bangalore",  "to": "Hosur",       "distance_km": 40,  "terrain": "urban"},
       {"from": "Hosur",      "to": "Shoolagiri",  "distance_km": 25,  "terrain": "flat"},
       {"from": "Shoolagiri", "to": "Krishnagiri", "distance_km": 25,  "terrain": "flat"},
       {"from": "Krishnagiri","to": "Dharmapuri",  "distance_km": 50,  "terrain": "flat"},
@@ -138,7 +138,7 @@
       {"from": "Sankari",    "to": "Bhavani",      "distance_km": 25,  "terrain": "flat"},
       {"from": "Bhavani",    "to": "Perundurai",   "distance_km": 20,  "terrain": "flat"},
       {"from": "Perundurai", "to": "Avinashi",     "distance_km": 35,  "terrain": "flat"},
-      {"from": "Avinashi",   "to": "Coimbatore",   "distance_km": 40,  "terrain": "flat"}
+      {"from": "Avinashi",   "to": "Coimbatore",   "distance_km": 40,  "terrain": "urban"}
     ]
   },
 
@@ -258,14 +258,14 @@
       }
     },
     "edges": [
-      {"from": "Guwahati",        "to": "Rangia",           "distance_km": 50,  "terrain": "flat"},
+      {"from": "Guwahati",        "to": "Rangia",           "distance_km": 50,  "terrain": "urban"},
       {"from": "Rangia",           "to": "Barpeta_Road",     "distance_km": 60,  "terrain": "flat"},
       {"from": "Barpeta_Road",     "to": "Bongaigaon",       "distance_km": 60,  "terrain": "flat"},
       {"from": "Bongaigaon",       "to": "Gossaigaon",       "distance_km": 60,  "terrain": "flat"},
       {"from": "Gossaigaon",       "to": "Hasimara",         "distance_km": 65,  "terrain": "flat"},
       {"from": "Hasimara",         "to": "Dhupguri",         "distance_km": 50,  "terrain": "flat"},
       {"from": "Dhupguri",         "to": "Siliguri_M1",      "distance_km": 38,  "terrain": "flat"},
-      {"from": "Siliguri_M1",      "to": "Siliguri",         "distance_km": 37,  "terrain": "flat"},
+      {"from": "Siliguri_M1",      "to": "Siliguri",         "distance_km": 37,  "terrain": "urban"},
       {"from": "Siliguri",         "to": "Ambari_Falakata",  "distance_km": 20,  "terrain": "flat"},
       {"from": "Ambari_Falakata",  "to": "Sevoke",           "distance_km": 55,  "terrain": "flat"},
       {"from": "Sevoke",           "to": "Rangpo",           "distance_km": 30,  "terrain": "mountain"},
@@ -281,11 +281,11 @@
     "initial_battery": 100.0,
     "stochastic": true,
     "difficulty": "hard",
-    "description": "Kanpur to Siliguri via NH19, 1110km, brutal Bihar charger desert, stochastic failures",
+    "description": "Kanpur to Siliguri via NH19, 1110km, NH19 charger desert, stochastic failures",
     "nodes": {
       "Kanpur": {
         "charger_type": "fast_dc",
-        "charger_kw": 50,
+        "charger_kw": 60,
         "reliability": 1.0,
         "is_mountain": false,
         "has_rest_facility": true,
@@ -469,7 +469,7 @@
       },
       "Siliguri": {
         "charger_type": "fast_dc",
-        "charger_kw": 50,
+        "charger_kw": 60,
         "reliability": 1.0,
         "is_mountain": false,
         "has_rest_facility": true,
@@ -477,20 +477,20 @@
       }
     },
     "edges": [
-      {"from": "Kanpur",                 "to": "Unnao_Bypass",            "distance_km": 25,  "terrain": "flat"},
-      {"from": "Unnao_Bypass",           "to": "Lucknow_Bypass",          "distance_km": 65,  "terrain": "flat"},
+      {"from": "Kanpur",                 "to": "Unnao_Bypass",            "distance_km": 25,  "terrain": "urban"},
+      {"from": "Unnao_Bypass",           "to": "Lucknow_Bypass",          "distance_km": 65,  "terrain": "urban"},
       {"from": "Lucknow_Bypass",         "to": "Haidergarh_Exit",         "distance_km": 60,  "terrain": "flat"},
       {"from": "Haidergarh_Exit",        "to": "Purvanchal_Rest_Area_1",  "distance_km": 60,  "terrain": "flat"},
       {"from": "Purvanchal_Rest_Area_1", "to": "Purvanchal_M1",           "distance_km": 40,  "terrain": "flat"},
       {"from": "Purvanchal_M1",          "to": "Azamgarh_Exit",           "distance_km": 40,  "terrain": "flat"},
       {"from": "Azamgarh_Exit",          "to": "Barhalganj",              "distance_km": 60,  "terrain": "flat"},
-      {"from": "Barhalganj",             "to": "Gorakhpur_Bypass",        "distance_km": 45,  "terrain": "flat"},
+      {"from": "Barhalganj",             "to": "Gorakhpur_Bypass",        "distance_km": 45,  "terrain": "urban"},
       {"from": "Gorakhpur_Bypass",       "to": "Kushinagar",              "distance_km": 55,  "terrain": "flat"},
       {"from": "Kushinagar",             "to": "Gopalganj",               "distance_km": 45,  "terrain": "flat"},
       {"from": "Gopalganj",              "to": "Motihari_Bypass",         "distance_km": 65,  "terrain": "flat"},
       {"from": "Motihari_Bypass",        "to": "Motihari_M1",             "distance_km": 40,  "terrain": "flat"},
       {"from": "Motihari_M1",            "to": "Muzaffarpur_Junction",    "distance_km": 40,  "terrain": "flat"},
-      {"from": "Muzaffarpur_Junction",   "to": "Darbhanga_Bypass",        "distance_km": 70,  "terrain": "flat"},
+      {"from": "Muzaffarpur_Junction",   "to": "Darbhanga_Bypass",        "distance_km": 70,  "terrain": "urban"},
       {"from": "Darbhanga_Bypass",       "to": "Jhanjharpur",             "distance_km": 45,  "terrain": "flat"},
       {"from": "Jhanjharpur",            "to": "Phulparas",               "distance_km": 40,  "terrain": "flat"},
       {"from": "Phulparas",              "to": "Forbesganj",              "distance_km": 65,  "terrain": "flat"},
@@ -499,7 +499,7 @@
       {"from": "Purnia_Bypass",          "to": "Kishanganj",              "distance_km": 65,  "terrain": "flat"},
       {"from": "Kishanganj",             "to": "Islampur",                "distance_km": 40,  "terrain": "flat"},
       {"from": "Islampur",               "to": "Bagdogra",                "distance_km": 60,  "terrain": "flat"},
-      {"from": "Bagdogra",               "to": "Siliguri",                "distance_km": 15,  "terrain": "flat"}
+      {"from": "Bagdogra",               "to": "Siliguri",                "distance_km": 15,  "terrain": "urban"}
     ]
   }
 }
