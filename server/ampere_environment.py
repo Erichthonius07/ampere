@@ -13,12 +13,13 @@ from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
 try:
-    from ..models import EVAction, EVObservation, GPSDashboard, RouteOption, ChargerInfo
+    from ..models import EVAction, EVObservation, GPSDashboard, RouteOption
 except ImportError:
-    from models import EVAction, EVObservation, GPSDashboard, RouteOption, ChargerInfo
+    from models import EVAction, EVObservation, GPSDashboard, RouteOption
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
+
 SPEED_MODES = {"eco": 50, "cruise": 70, "highway": 90, "sport": 110}
 TERRAIN_MULTIPLIERS = {"flat": 1.0, "mountain": 1.8, "urban": 1.2}
 
@@ -100,7 +101,6 @@ class AmpereEnvironment(Environment):
         if self.current_step_count > self.max_steps:
             return self._terminal_obs(-50.0, "Max steps exceeded", 0.01)
 
-        # Allow staying in place (essential for pre-desert charging)
         valid_neighbors = list(self.map_graph.successors(self.current_node))
         valid_waypoints = valid_neighbors + [self.current_node]
         
@@ -126,7 +126,6 @@ class AmpereEnvironment(Environment):
         prev_node = self.current_node
         prev_battery = self.battery
         
-        # If staying in place, distance is 0
         if action.next_waypoint == self.current_node:
             distance_km = 0.0
             terrain = "flat"
@@ -194,22 +193,9 @@ class AmpereEnvironment(Environment):
         except: pass
         
         reward -= 0.02 * time_spent
-        reward -= 0.05 * max(0.0, prev_battery - self.battery)
-        
-        if self.fatigue > 200: reward -= 5.0
-        elif self.fatigue > 150: reward -= 2.0
-        
-        if self.battery < 20.0 and self._get_nearest_charger_km() > 100:
-            reward -= 5.0
-            
-        if action.charge_minutes > 0 and prev_battery < 40.0 and charger_worked:
-            reward += 2.0
-            
-        if reached:
-            reward += max(0.0, 20.0 - 0.5 * abs(self.battery - 10.0))
-        
-        if crashed or stranded:
-            reward -= 50.0
+        if self.battery < 20.0: reward -= 5.0
+        if crashed or stranded: reward -= 50.0
+        if reached: reward += 20.0
 
         obs = self._build_observation()
         obs.reward = round(reward, 4)
@@ -220,10 +206,10 @@ class AmpereEnvironment(Environment):
             obs.metadata = {
                 "final_grader_score": grade,
                 "reached_destination": reached,
-                "stranded": stranded,
-                "crashed": crashed,
                 "time_elapsed_minutes": round(self.time_elapsed, 1),
+                "deadline_minutes": self.deadline_mins,
                 "battery_remaining_pct": round(self.battery, 2),
+                "fatigue_remaining": round(self.fatigue, 2),
             }
 
         return obs
@@ -232,44 +218,9 @@ class AmpereEnvironment(Environment):
     def state(self) -> State:
         return self._state
 
-    # --- Helpers ---
-
-    def _get_charger_lookahead(self) -> list:
-        """Returns ordered list of upcoming chargers on the path."""
-        try:
-            path = nx.shortest_path(self.map_graph, self.current_node, self.end_node, weight="distance_km")
-        except: return []
-        
-        lookahead = []
-        cum_dist = 0
-        for i in range(len(path) - 1):
-            n_a, n_b = path[i], path[i+1]
-            cum_dist += self.map_graph[n_a][n_b]["distance_km"]
-            
-            nd = self.map_graph.nodes[n_b]
-            if nd.get("charger_kw", 0) > 0:
-                lookahead.append({
-                    "node": n_b,
-                    "distance_km": cum_dist,
-                    "charger_kw": nd["charger_kw"],
-                    "reliability": nd.get("reliability", 1.0),
-                    "terrain_after": self.map_graph[n_b][path[i+2]].get("terrain", "flat") if i+2 < len(path) else "flat"
-                })
-        return lookahead
-
-    def _get_nearest_charger_km(self) -> float:
-        try:
-            reachable = nx.single_source_dijkstra_path_length(self.map_graph, self.current_node, weight="distance_km")
-            for node, dist in sorted(reachable.items(), key=lambda x: x[1]):
-                if node != self.current_node and self.map_graph.nodes[node].get("charger_kw", 0) > 0:
-                    return dist
-        except: pass
-        return 9999.0
-
     def _build_observation(self) -> EVObservation:
         routes = []
-        
-        # 1. Add current node (Stay option)
+        # Add current node (Stay option)
         curr_nd = self.map_graph.nodes[self.current_node]
         routes.append(RouteOption(
             destination_node=self.current_node, distance_km=0,
@@ -278,8 +229,7 @@ class AmpereEnvironment(Environment):
             has_rest_facility=curr_nd.get("has_rest_facility", False),
             terrain="flat"
         ))
-
-        # 2. Add neighbors
+        
         for neighbor in self.map_graph.successors(self.current_node):
             edge = self.map_graph[self.current_node][neighbor]
             nd = self.map_graph.nodes[neighbor]
@@ -290,24 +240,18 @@ class AmpereEnvironment(Environment):
                 has_rest_facility=nd.get("has_rest_facility", False),
                 terrain=edge.get("terrain", "flat")
             ))
-        
+
+        dist_to_end = 9999
         try:
             dist_to_end = int(nx.shortest_path_length(self.map_graph, self.current_node, self.end_node, weight="distance_km"))
-        except: dist_to_end = 9999
-
-        nearest_km = self._get_nearest_charger_km()
-        time_rem = max(0.0, self.deadline_mins - self.time_elapsed)
+        except: pass
 
         gps = GPSDashboard(
             distance_to_final_destination_km=dist_to_end,
-            distance_to_nearest_charger_km=int(nearest_km),
-            time_remaining_minutes=round(time_rem, 1)
+            distance_to_nearest_charger_km=0,
+            optimal_heading=f"Head towards {self.end_node}",
+            time_remaining_minutes=max(0.0, self.deadline_mins - self.time_elapsed)
         )
-
-        warning = "CRITICAL" if self.battery < 15 else "WARNING" if self.battery < 30 else "OK"
-        
-        eco_wh_km = VEHICLE["base_consumption_wh_per_km"]
-        eco_range = (self.battery / 100.0) * (VEHICLE["battery_capacity_kwh"] * 1000) / eco_wh_km
 
         return EVObservation(
             current_location=self.current_node,
@@ -316,11 +260,30 @@ class AmpereEnvironment(Environment):
             time_elapsed_minutes=round(self.time_elapsed, 2),
             available_routes=routes,
             navigation_system=gps,
-            battery_warning=warning,
-            can_reach_next_charger=(nearest_km <= eco_range),
-            estimated_range_km=int(eco_range),
+            battery_warning="OK",
+            can_reach_next_charger=True,
+            estimated_range_km=int(self.battery / 0.302),
             charger_lookahead=self._get_charger_lookahead()
         )
+
+    def _get_charger_lookahead(self) -> list:
+        try:
+            path = nx.shortest_path(self.map_graph, self.current_node, self.end_node, weight="distance_km")
+        except: return []
+        
+        lookahead = []
+        cum_dist = 0
+        for i in range(len(path) - 1):
+            n_a, n_b = path[i], path[i+1]
+            cum_dist += self.map_graph[n_a][n_b]["distance_km"]
+            nd = self.map_graph.nodes[n_b]
+            if nd.get("charger_kw", 0) > 0:
+                lookahead.append({
+                    "node": n_b, "distance_km": cum_dist,
+                    "charger_kw": nd["charger_kw"], "reliability": nd.get("reliability", 1.0),
+                    "terrain_after": self.map_graph[n_b][path[i+2]].get("terrain", "flat") if i+2 < len(path) else "flat"
+                })
+        return lookahead
 
     def _terminal_obs(self, reward: float, error: str, grader_score: float) -> EVObservation:
         obs = self._build_observation()
@@ -330,16 +293,43 @@ class AmpereEnvironment(Environment):
         return obs
 
     def _calculate_final_grade(self, crashed: bool, stranded: bool, reached: bool) -> float:
+        """
+        Strict Multi-Factor Grading using deadlines from graph_data.json.
+        Components:
+        1. Completion (Base): Reached destination?
+        2. Time (50%): Did you beat the deadline?
+        3. Battery (25%): Safe arrival charge?
+        4. Fatigue (25%): Driver safety?
+        """
         if crashed or stranded or not reached:
             return 0.01
         
-        if self.time_elapsed <= self.deadline_mins:
-            return 0.99
+        # TIME COMPONENT (50%)
+        deadline = self.deadline_mins
+        elapsed = self.time_elapsed
         
-        # Late arrival logic (0.60 down to 0.30)
-        minutes_late = self.time_elapsed - self.deadline_mins
-        if minutes_late >= 120:
-            return 0.30
-        
-        grade = 0.60 - (0.30 * (minutes_late / 120.0))
-        return round(max(0.30, min(0.60, grade)), 2)
+        if elapsed <= deadline:
+            time_score = 0.50
+            if elapsed <= deadline * 0.5:
+                time_score += 0.10
+        else:
+            minutes_late = elapsed - deadline
+            lateness_ratio = minutes_late / deadline
+            
+            if lateness_ratio <= 0.25:
+                time_score = 0.30
+            elif lateness_ratio <= 0.50:
+                time_score = 0.15
+            elif lateness_ratio <= 1.0:
+                time_score = 0.05
+            else:
+                time_score = 0.01
+
+        # BATTERY COMPONENT (25%)
+        battery_score = 0.25 if self.battery >= 20.0 else (0.15 if self.battery >= 10.0 else 0.05)
+
+        # FATIGUE COMPONENT (25%)
+        fatigue_score = 0.25 if self.fatigue <= 150 else (0.10 if self.fatigue <= 250 else 0.01)
+
+        total_score = time_score + battery_score + fatigue_score
+        return max(0.01, min(0.99, round(total_score, 2)))
