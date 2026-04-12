@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from openai import OpenAI
 from client import AmpereEnv
 from models import EVAction
@@ -20,13 +20,14 @@ llm_client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
 # ── System Prompt ───────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are EcoRoute, an advanced AI EV Dispatcher.
-Your objective is to navigate a Tata Nexon EV to the final destination BEFORE the deadline.
+Your objective is navigate a Tata Nexon EV to the final destination BEFORE the deadline.
 
 CRITICAL RULES:
-1. SPEED: 'cruise' (70km/h) is your default. Use 'eco' (50km/h) ONLY on mountain terrain.
-2. CHARGING: Charge at fast_dc nodes when battery is below 40%. Keep stops short (15-25 min).
-3. WAYPOINTS: Choose EXACTLY one value from the 'Valid next_waypoint values' list.
-4. FATIGUE: Rest only if fatigue > 150. Keep rest short (10-15 min).
+1. ALWAYS MOVE FORWARD: You MUST choose EXACTLY ONE destination from the `available_routes`. NEVER output your current location. You cannot stay in place.
+2. CHARGE AT DESTINATION: Charging happens at your destination. If a route shows `has_fast_charger: true` or `has_slow_charger: true`, you must input enough `charge_minutes` to reach 100% battery (assume 1.8% gain per min for fast_dc, 0.25% for slow_ac). Max allowed is 480.
+3. SURVIVE DESERTS: Chargers can randomly break down! You must top-off to 100% at every single opportunity to survive.
+4. SPEED: 'cruise' (70km/h) is default. Use 'eco' (50km/h) to drastically save battery.
+5. FATIGUE: Rest only if fatigue > 150. Keep rest equal to charge time. Max allowed is 480.
 
 Output ONLY valid JSON matching this schema exactly:
 {
@@ -39,7 +40,7 @@ Output ONLY valid JSON matching this schema exactly:
 
 MAX_RETRIES = 3
 
-# ── Strict Grader Logging Functions (Goes to stdout) ────────────────────────
+# ── Strict Grader Logging Functions ─────────────────────────────────────────
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
@@ -57,13 +58,19 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 
 
 # ── LLM Action & Integrated Autopilot ───────────────────────────────────────
-def get_action_from_llm(obs) -> EVAction | None:
+def get_action_from_llm(obs, previous_intervention: str = "") -> EVAction | None:
     valid_waypoints = [r.destination_node for r in obs.available_routes]
+    
     user_prompt = (
         f"CURRENT DASHBOARD:\n{obs.model_dump_json(indent=2)}\n\n"
         f"Valid next_waypoint values: {valid_waypoints}\n"
-        f"Output JSON."
     )
+    
+    if previous_intervention:
+        user_prompt += f"\n⚠️ SYSTEM WARNING: Your last planned action was overridden! {previous_intervention}\n"
+        
+    user_prompt += "\nOutput JSON."
+
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = llm_client.chat.completions.create(
@@ -75,58 +82,85 @@ def get_action_from_llm(obs) -> EVAction | None:
                 response_format={"type": "json_object"},
             )
             llm_json = json.loads(response.choices[0].message.content)
+            
+            # --- BULLETPROOF PYDANTIC CLAMP ---
+            # Extract safely, default to 0, clamp to 480 to prevent server crashes
+            c_min = int(llm_json.get("charge_minutes", 0))
+            r_min = int(llm_json.get("rest_minutes", 0))
+            llm_json["charge_minutes"] = min(max(c_min, 0), 480)
+            llm_json["rest_minutes"] = min(max(r_min, 0), 480)
+            
             action = EVAction(**llm_json)
-            
-            if action.next_waypoint not in valid_waypoints:
-                print(f"   ⚠️  Attempt {attempt}: Invalid waypoint. Retrying...", file=sys.stderr)
-                continue
-
-            # ==========================================
-            # 🏎️ THE "GOLDILOCKS" OVERRIDE 🏎️
-            # ==========================================
-            
-            # 1. OPTIMIZED TOP-OFF (The 85% Rule)
-            # Keep the battery high enough to survive "Charger Deserts" like Lucknow,
-            # but don't overcharge to 100% and waste hours on the simulation clock.
-            if obs.battery_percentage < 85.0:
-                charge_needed = int(90.0 - obs.battery_percentage)
-                if charge_needed > 0:
-                    print(f"   [AUTOPILOT] Topping off battery. Forcing {charge_needed} mins of charge.", file=sys.stderr)
-                    action.charge_minutes = max(action.charge_minutes, charge_needed)
-            else:
-                action.charge_minutes = 0
-
-            # 2. DYNAMIC SPEED (The 40% Survival Rule)
-            chosen_route = next((r for r in obs.available_routes if r.destination_node == action.next_waypoint), None)
-            
-            if chosen_route and chosen_route.terrain == "mountain":
-                print(f"   [AUTOPILOT] Mountain terrain detected! Forcing ECO mode.", file=sys.stderr)
-                action.speed_mode = "eco"
-            elif obs.battery_percentage < 40.0:
-                # If we arrive at a city with less than 40% battery, it means we took a MASSIVE 
-                # hit on the last leg (or our charger was slow). Play it safe and drive ECO.
-                print(f"   [AUTOPILOT] Battery critical (<40%). Forcing ECO mode for next leg.", file=sys.stderr)
-                action.speed_mode = "eco"
-            else:
-                # Default to cruise to save massive amounts of time!
-                action.speed_mode = "cruise"
-
-            # 3. STRICT REST RULE
-            if action.charge_minutes > 0:
-                action.rest_minutes = action.charge_minutes
-            elif obs.fatigue_points > 150:
-                action.rest_minutes = 20
-            else:
-                action.rest_minutes = 0
-
             return action
-
         except Exception as e:
             print(f"   ⚠️  Attempt {attempt}: {e}. Retrying...", file=sys.stderr)
     return None
 
-def apply_autopilot(action: EVAction, obs) -> EVAction:
-    return action
+def apply_autopilot(action: EVAction, obs) -> Tuple[EVAction, str]:
+    intervention_msg = ""
+    valid_waypoints = [r.destination_node for r in obs.available_routes]
+    
+    if action.next_waypoint not in valid_waypoints:
+        action.next_waypoint = valid_waypoints[0]
+        intervention_msg += f"Autopilot: Fixed invalid waypoint. "
+
+    chosen_route = next((r for r in obs.available_routes if r.destination_node == action.next_waypoint), None)
+    
+    # 1. THE PARANOIA POLICY (Anti-Stochastic Failure)
+    # If we are below 75% battery, we cannot risk driving fast into a potential broken charger.
+    if obs.battery_percentage < 75.0 and action.speed_mode != "eco":
+        print(f"   [AUTOPILOT] Battery < 75%. Forcing ECO mode to survive potential charger failures.", file=sys.stderr)
+        action.speed_mode = "eco"
+        intervention_msg += "Autopilot: Forced ECO mode to conserve battery in case the next charger is broken. "
+
+    # --- PERFECT PHYSICS SIMULATION ---
+    speed = 50.0 if action.speed_mode == "eco" else 70.0
+    drag = (speed / 50.0) ** 2
+    terrain_mult = 1.8 if chosen_route.terrain == "mountain" else (1.2 if chosen_route.terrain == "urban" else 1.0)
+    
+    estimated_drain = (136.0 * chosen_route.distance_km * drag * terrain_mult) / 450.0
+    arrival_battery = obs.battery_percentage - estimated_drain
+
+    # 2. FATAL TRAJECTORY PREVENTION
+    if arrival_battery <= 15.0 and action.speed_mode != "eco":
+        action.speed_mode = "eco"
+        intervention_msg += "Autopilot: Forced ECO mode to stretch range and survive the leg. "
+        
+        # Recalculate arrival battery with eco mode
+        drag = (50.0 / 50.0) ** 2
+        estimated_drain = (136.0 * chosen_route.distance_km * drag * terrain_mult) / 450.0
+        arrival_battery = obs.battery_percentage - estimated_drain
+
+    # 3. PROACTIVE TOP-OFF TO 100%
+    if chosen_route.has_fast_charger or chosen_route.has_slow_charger:
+        target_battery = 100.0  
+        if arrival_battery < target_battery:
+            charge_rate = 1.85 if chosen_route.has_fast_charger else 0.26
+            mins_needed = int((target_battery - arrival_battery) / charge_rate)
+            mins_needed = min(mins_needed, 180) 
+            
+            if action.charge_minutes < mins_needed:
+                print(f"   [AUTOPILOT] Target has charger. Forcing {mins_needed} mins to hit 100% battery.", file=sys.stderr)
+                action.charge_minutes = mins_needed
+                intervention_msg += f"Autopilot: Forced {mins_needed} mins of charge to hit 100%. "
+
+    # 4. NO GHOST CHARGING
+    if not chosen_route.has_fast_charger and not chosen_route.has_slow_charger:
+        if action.charge_minutes > 0:
+            print(f"   [AUTOPILOT] Preventing ghost charge. {action.next_waypoint} has no charger.", file=sys.stderr)
+            action.charge_minutes = 0
+            intervention_msg += f"Autopilot: Removed charging because {action.next_waypoint} has no charging station. "
+
+    # 5. STRICT REST RULE
+    if action.charge_minutes > 0:
+        action.rest_minutes = max(action.rest_minutes, action.charge_minutes)
+    elif obs.fatigue_points > 150 and action.rest_minutes < 20:
+        action.rest_minutes = 20
+    elif action.charge_minutes == 0 and obs.fatigue_points <= 150:
+        action.rest_minutes = 0
+
+    return action, intervention_msg
+
 
 # ── Score Extraction ────────────────────────────────────────────────────────
 def extract_numeric_score(obs, total_reward) -> float:
@@ -138,8 +172,6 @@ def extract_numeric_score(obs, total_reward) -> float:
             return float(heading.split("SCORE:")[1].split("/")[0].strip())
         except:
             pass
-    
-    # Fallback clamp to ensure it strictly respects the >0 and <1 rule
     if total_reward > 0:
         return 0.99
     return 0.01
@@ -149,85 +181,88 @@ def run_agent(scenario: str):
     print(f"\n🚀 Booting EcoRoute Agent for Scenario: {scenario}", file=sys.stderr)
     print(f"🔗 Connecting to OpenEnv Server at {SERVER_URL}...\n", file=sys.stderr)
 
-    with AmpereEnv(base_url=SERVER_URL).sync() as env:
-        step_result = env.reset(scenario_key=scenario)
-        obs  = step_result.observation
-        done = step_result.done
+    try:
+        with AmpereEnv(base_url=SERVER_URL).sync() as env:
+            step_result = env.reset(scenario_key=scenario)
+            obs  = step_result.observation
+            done = step_result.done
 
-        # 1. REQUIRED GRADER OUTPUT: Start tag
-        log_start(task=scenario, env=BENCHMARK, model=MODEL_NAME)
+            log_start(task=scenario, env=BENCHMARK, model=MODEL_NAME)
 
-        rewards: List[float] = []
-        step_count = 0
-        total_reward = 0.0
-        success = False
+            rewards: List[float] = []
+            step_count = 0
+            total_reward = 0.0
+            success = False
+            previous_intervention = ""
 
-        while not done:
-            step_count += 1
-            error = None
+            while not done:
+                step_count += 1
+                error = None
 
-            # --- BEAUTIFUL UI (Routed to stderr) ---
+                print("=" * 60, file=sys.stderr)
+                print(f"📍 STEP {step_count} | Current Location: {obs.current_location}", file=sys.stderr)
+                print(f"🔋 Battery: {obs.battery_percentage:.1f}%  | ⚠️ Warning: {obs.battery_warning}", file=sys.stderr)
+                print(f"🥱 Fatigue: {obs.fatigue_points:.0f}/300 | ⏱️ Elapsed: {obs.time_elapsed_minutes:.0f} mins", file=sys.stderr)
+                print(f"🗺️  Remaining: {obs.navigation_system.distance_to_final_destination_km} km | Est. Range: {obs.estimated_range_km} km", file=sys.stderr)
+                print(f"🛣️  Options: {[r.destination_node for r in obs.available_routes]}", file=sys.stderr)
+                print("-" * 60, file=sys.stderr)
+
+                print("🧠 Thinking...", file=sys.stderr)
+                action = get_action_from_llm(obs, previous_intervention)
+                
+                if action is None:
+                    error = "LLM failed to return valid action"
+                    print("❌ Agent could not decide. Aborting episode.", file=sys.stderr)
+                    log_step(step=step_count, action="null", reward=0.0, done=True, error=error)
+                    break
+
+                action, previous_intervention = apply_autopilot(action, obs)
+                
+                print(f"⚡ ACTION TAKEN:", file=sys.stderr)
+                print(f"   ► Drive to: {action.next_waypoint}", file=sys.stderr)
+                print(f"   ► Speed:    {action.speed_mode}", file=sys.stderr)
+                print(f"   ► Charge:   {action.charge_minutes} mins", file=sys.stderr)
+                print(f"   ► Rest:     {action.rest_minutes} mins", file=sys.stderr)
+
+                action_str = json.dumps(action.model_dump(), separators=(',', ':'))
+
+                try:
+                    step_result  = env.step(action)
+                    obs          = step_result.observation
+                    done         = step_result.done
+                    reward       = float(step_result.reward or 0.0)
+                except Exception as e:
+                    error = str(e).replace('\n', ' ')
+                    reward = 0.0
+                    done = True
+
+                total_reward += reward
+                rewards.append(reward)
+                
+                print(f"\n💰 Reward this step: {reward:+.2f} (Total: {total_reward:.2f})\n", file=sys.stderr)
+
+                log_step(step=step_count, action=action_str, reward=reward, done=done, error=error)
+                time.sleep(0.5)
+
+            print("🏁 === EPISODE COMPLETE === 🏁", file=sys.stderr)
+            print(f"   Time Elapsed: {obs.time_elapsed_minutes:.1f} mins", file=sys.stderr)
+            print(f"   Steps Taken:  {step_count}", file=sys.stderr)
+            print(f"   Total Reward: {total_reward:.2f}", file=sys.stderr)
             print("=" * 60, file=sys.stderr)
-            print(f"📍 STEP {step_count} | Current Location: {obs.current_location}", file=sys.stderr)
-            print(f"🔋 Battery: {obs.battery_percentage:.1f}%  | ⚠️ Warning: {obs.battery_warning}", file=sys.stderr)
-            print(f"🥱 Fatigue: {obs.fatigue_points:.0f}/300 | ⏱️ Elapsed: {obs.time_elapsed_minutes:.0f} mins", file=sys.stderr)
-            print(f"🗺️  Remaining: {obs.navigation_system.distance_to_final_destination_km} km", file=sys.stderr)
-            print(f"🛣️  Options: {[r.destination_node for r in obs.available_routes]}", file=sys.stderr)
-            print("-" * 60, file=sys.stderr)
 
-            print("🧠 Thinking...", file=sys.stderr)
-            action = get_action_from_llm(obs)
-            if action is None:
-                error = "LLM failed to return valid action"
-                print("❌ Agent could not decide. Aborting episode.", file=sys.stderr)
-                log_step(step=step_count, action="null", reward=0.0, done=True, error=error)
-                break
+            score = extract_numeric_score(obs, total_reward)
+            success = score >= 0.5 
 
-            action = apply_autopilot(action, obs)
+            log_end(success=success, steps=step_count, score=score, rewards=rewards)
             
-            print(f"⚡ ACTION TAKEN:", file=sys.stderr)
-            print(f"   ► Drive to: {action.next_waypoint}", file=sys.stderr)
-            print(f"   ► Speed:    {action.speed_mode}", file=sys.stderr)
-            print(f"   ► Charge:   {action.charge_minutes} mins", file=sys.stderr)
-            print(f"   ► Rest:     {action.rest_minutes} mins", file=sys.stderr)
-
-            action_str = json.dumps(action.model_dump(), separators=(',', ':'))
-
-            try:
-                step_result  = env.step(action)
-                obs          = step_result.observation
-                done         = step_result.done
-                reward       = float(step_result.reward or 0.0)
-            except Exception as e:
-                error = str(e).replace('\n', ' ')
-                reward = 0.0
-                done = True
-
-            total_reward += reward
-            rewards.append(reward)
-            
-            print(f"\n💰 Reward this step: {reward:+.2f} (Total: {total_reward:.2f})\n", file=sys.stderr)
-
-            # 2. REQUIRED GRADER OUTPUT: Step tag
-            log_step(step=step_count, action=action_str, reward=reward, done=done, error=error)
-            time.sleep(0.5)
-
-        # --- BEAUTIFUL EPISODE SUMMARY (Routed to stderr) ---
-        print("🏁 === EPISODE COMPLETE === 🏁", file=sys.stderr)
-        print(f"   Time Elapsed: {obs.time_elapsed_minutes:.1f} mins", file=sys.stderr)
-        print(f"   Steps Taken:  {step_count}", file=sys.stderr)
-        print(f"   Total Reward: {total_reward:.2f}", file=sys.stderr)
-        print("=" * 60, file=sys.stderr)
-
-        # 3. REQUIRED GRADER OUTPUT: End tag
-        score = extract_numeric_score(obs, total_reward)
-        success = score >= 0.5 
-
-        log_end(success=success, steps=step_count, score=score, rewards=rewards)
+    except Exception as e:
+        if "503" in str(e):
+            print(f"\n❌ SERVER ERROR (HTTP 503): The Hugging Face Space ({SERVER_URL}) is currently asleep or restarting. Please wait 1-2 minutes and run the script again.", file=sys.stderr)
+        else:
+            print(f"\n❌ CONNECTION ERROR: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":
-    
     if not API_KEY or API_KEY == "dummy_token":
         print("⚠️ WARNING: No valid API Key found. Run this locally using: export API_KEY='your-key'", file=sys.stderr)
 
