@@ -56,7 +56,6 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
 
-# ── LLM Action ──────────────────────────────────────────────────────────────
 # ── LLM Action & Integrated Autopilot ───────────────────────────────────────
 def get_action_from_llm(obs) -> EVAction | None:
     valid_waypoints = [r.destination_node for r in obs.available_routes]
@@ -83,30 +82,42 @@ def get_action_from_llm(obs) -> EVAction | None:
                 continue
 
             # ==========================================
-            # 🛡️ THE PARANOID ROAD-TRIPPER OVERRIDE 🛡️
+            # 🏎️ THE "GOLDILOCKS" OVERRIDE 🏎️
             # ==========================================
             
-            # 1. ALWAYS TOP OFF. If we are below 85%, calculate minutes to reach ~95%.
-            # Assuming fast chargers give ~1% per min. Slow chargers give less, 
-            # but asking for this much time guarantees we soak up enough juice to survive.
+            # 1. OPTIMIZED TOP-OFF (The 85% Rule)
+            # Keep the battery high enough to survive "Charger Deserts" like Lucknow,
+            # but don't overcharge to 100% and waste hours on the simulation clock.
             if obs.battery_percentage < 85.0:
-                charge_needed = int(95.0 - obs.battery_percentage)
+                charge_needed = int(90.0 - obs.battery_percentage)
                 if charge_needed > 0:
                     print(f"   [AUTOPILOT] Topping off battery. Forcing {charge_needed} mins of charge.", file=sys.stderr)
                     action.charge_minutes = max(action.charge_minutes, charge_needed)
+            else:
+                action.charge_minutes = 0
 
-            # 2. Force ECO mode if we are dropping low, meaning the gaps are huge.
-            if obs.battery_percentage < 55.0:
-                print(f"   [AUTOPILOT] Battery dropped below 55%. Forcing ECO mode to survive the gap.", file=sys.stderr)
-                action.speed_mode = "eco"
+            # 2. DYNAMIC SPEED (The 40% Survival Rule)
+            chosen_route = next((r for r in obs.available_routes if r.destination_node == action.next_waypoint), None)
             
-            # 3. The Strict Rest Rule (Matches charge time to prevent timeout bugs)
+            if chosen_route and chosen_route.terrain == "mountain":
+                print(f"   [AUTOPILOT] Mountain terrain detected! Forcing ECO mode.", file=sys.stderr)
+                action.speed_mode = "eco"
+            elif obs.battery_percentage < 40.0:
+                # If we arrive at a city with less than 40% battery, it means we took a MASSIVE 
+                # hit on the last leg (or our charger was slow). Play it safe and drive ECO.
+                print(f"   [AUTOPILOT] Battery critical (<40%). Forcing ECO mode for next leg.", file=sys.stderr)
+                action.speed_mode = "eco"
+            else:
+                # Default to cruise to save massive amounts of time!
+                action.speed_mode = "cruise"
+
+            # 3. STRICT REST RULE
             if action.charge_minutes > 0:
                 action.rest_minutes = action.charge_minutes
+            elif obs.fatigue_points > 150:
+                action.rest_minutes = 20
             else:
-                # If we aren't charging, check if the driver is exhausted
-                if obs.fatigue_points > 150:
-                    action.rest_minutes = 20
+                action.rest_minutes = 0
 
             return action
 
