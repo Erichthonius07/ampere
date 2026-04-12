@@ -1,7 +1,7 @@
 """
 Ampere Environment Implementation.
 
-EV routing simulation for Indian highways using a Tata Nexon EV Creative MR.
+EV routing simulation for Indian highways using a Tata Curvv Creative 45.
 The AI agent must route the vehicle from start to end while managing:
   - Battery drain (aerodynamic drag + terrain multiplier)
   - Driver fatigue (MORTH-compliant 300-point scale)
