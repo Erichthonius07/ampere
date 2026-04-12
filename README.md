@@ -1,255 +1,164 @@
----
-title: Ampere Environment Server
-emoji: 🏀
-colorFrom: gray
-colorTo: indigo
-sdk: docker
-pinned: false
-app_port: 7860
-base_path: /web
-tags:
-  - openenv
+# ⚡ Ampere: EV Dispatcher AI for Indian Highways
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Groq](https://img.shields.io/badge/Groq-Fast_LLM-f55036)](https://groq.com/)
+[![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-brightgreen)](https://github.com/)
+
+**Ampere** is an OpenEnv simulation environment where an LLM agent acts as a trip dispatcher, routing a real Tata Curvv EV Creative 45 across Indian highway corridors under real-world physics, infrastructure, and human constraints.
+
 ---
 
-# Ampere Environment
+## 🛑 The Problem: India's Charging Infrastructure Gap
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+India manages over 1,46,000 km of national highways (NHAI), but inter-city EV travel remains a logistical challenge. According to McKinsey's 2024 Mobility Consumer Pulse survey, nearly 30% of EV owners globally are considering switching back to petrol vehicles — with inadequate or unreliable public charging infrastructure cited as the leading cause.
 
-## Quick Start
+Standard routing engines like Google Maps are fundamentally unsuited for EVs. They calculate shortest distance but ignore the three real constraints of highway EV travel:
 
-The simplest way to use the Ampere environment is through the `AmpereEnv` class:
+- **Aerodynamic physics** — battery drain scales with the square of speed. Driving at 90 km/h drains 3.24× more battery per km than 50 km/h.
+- **Charger deserts** — stretches of 150–300 km with no working charger exist on real Indian highways like NH19.
+- **Driver fatigue** — MORTH mandates rest after sustained driving. A stranded driver and a crashed driver are equally unacceptable outcomes.
 
-```python
-from ampere import AmpereAction, AmpereEnv
+The agent cannot simply "charge when battery is low." It must plan multiple legs ahead, weigh the risk of an unreliable charger against the cost of a detour, and synchronise mandatory rest stops with charging sessions to avoid wasting time. This is a genuine **Multi-Objective Optimisation problem under Partial Observability (POMDP)**.
 
-try:
-    # Create environment from Docker image
-    ampereenv = AmpereEnv.from_docker_image("ampere-env:latest")
+---
 
-    # Reset
-    result = ampereenv.reset()
-    print(f"Reset: {result.observation.echoed_message}")
+## 💡 The Solution
 
-    # Send multiple messages
-    messages = ["Hello, World!", "Testing echo", "Final message"]
+We built **Ampere** using a hybrid neuro-symbolic architecture — an LLM pathfinder paired with a deterministic physics-engine autopilot:
 
-    for msg in messages:
-        result = ampereenv.step(AmpereAction(message=msg))
-        print(f"Sent: '{msg}'")
-        print(f"  → Echoed: '{result.observation.echoed_message}'")
-        print(f"  → Length: {result.observation.message_length}")
-        print(f"  → Reward: {result.reward}")
+- **System 1 (The LLM)**: Analyses the route graph, evaluates remaining distance and charger availability, and selects the optimal next waypoint based on battery, fatigue, and deadline context.
+- **System 2 (The Autopilot)**: A deterministic safety layer that intercepts LLM decisions. It calculates exact charge times needed to survive the next leg, automatically drops to `eco` speed on mountain terrain or when battery falls below 35%, and overlaps rest with charging to minimise wasted time.
 
-finally:
-    # Always clean up
-    ampereenv.close()
-```
+---
 
-That's it! The `AmpereEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
+## ⚙️ The Physics Engine
 
-## Building the Docker Image
+Built on real Tata Curvv EV Creative 45 specifications — not approximations:
 
-Before using the environment, you need to build the Docker image:
+| Parameter | Real Value | Simulation Value |
+|---|---|---|
+| Battery capacity | 45 kWh usable | 45.0 kWh |
+| Base consumption | 136 Wh/km at 50 km/h | 136.0 Wh/km |
+| DC fast charge (60 kW) | 10–80% in 40 min | 2.22%/min |
+| AC slow charge (7.2 kW) | 10–100% in 7.25 hrs | 0.353%/min |
+| Real-world highway range | 330–350 km (mixed) | ~330 km at eco speed |
+| Mountain terrain penalty | Real ghat/hill roads | 1.8× drain multiplier |
+| Urban terrain penalty | City stop-start traffic | 1.2× drain multiplier |
 
-```bash
-# From project root
-docker build -t ampere-env:latest -f server/Dockerfile .
-```
+**Speed modes and their real range consequences:**
 
-## Deploying to Hugging Face Spaces
+| Mode | Speed | Range (full charge) | When to use |
+|---|---|---|---|
+| `eco` | 50 km/h | ~330 km | Charger deserts, mountain climbs |
+| `cruise` | 70 km/h | ~168 km | Normal highway legs |
+| `highway` | 90 km/h | ~102 km | Short legs with charger confirmed ahead |
+| `sport` | 110 km/h | ~68 km | Last-mile dash only |
 
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+**Terrain multipliers:**
 
-```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
+| Terrain | Multiplier | Where applied |
+|---|---|---|
+| `flat` | 1.0× | Open NH highway stretches |
+| `urban` | 1.2× | City exits/approaches — Bangalore, Guwahati, Kanpur-Lucknow corridor, Gorakhpur, Siliguri |
+| `mountain` | 1.8× | Thoppur Ghats (Task 1), NH10 Teesta Valley (Task 2) |
 
-# Or specify options
-openenv push --namespace my-org --private
-```
+**Fatigue model** — MORTH-compliant 300-point scale:
+- +1 point per minute driving
+- −3 points per minute resting or charging
+- Terminal at 300 (crash → episode score 0.01)
 
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
+**Stochastic infrastructure** — Task 3 applies per-station failure probabilities derived from real Google Maps ratings on the Kanpur–Siliguri corridor. Charger status is unknown until arrival (POMDP). The agent must maintain battery buffers to survive failures discovered on arrival.
+
+---
+
+## 🗺️ The Three Tasks
+
+| Task | Route | Distance | Key Challenge |
+|---|---|---|---|
+| **Easy** | Bangalore → Coimbatore | 365 km | Terrain-aware speed control, Thoppur ghats |
+| **Medium** | Guwahati → Gangtok | 540 km | 80% start battery, 170 km charger desert, NH10 mountain section |
+| **Hard** | Kanpur → Siliguri | 1110 km | NH19 charger desert (300 km gap), stochastic failures, fatigue across 28 hours |
+
+All route data — node distances, charger locations, reliability ratings — collected from real Google Maps data on each corridor.
+
+---
+
+## 📊 Evaluation Results
+
+The grader scores strictly between 0.01 and 0.99:
+
+| Score | Meaning |
+|---|---|
+| **0.99** | Reached destination safely before deadline |
+| **0.31–0.59** | Reached destination, late (interpolated penalty) |
+| **0.01** | Stranded (0% battery), crashed (fatigue 300), or timed out |
+
+Task 1 scores consistently near 0.99. Task 3 exhibits variance due to stochastic charger failures — this is intended. A naive agent driving at constant cruise speed strands on Task 2 and fails Task 3 on nearly every run.
+
+---
+
+## ⚙️ Local Installation & Usage
 
 ### Prerequisites
+- Python 3.11+
+- `uv` (recommended) or `pip`
+- Groq API Key or Hugging Face Token
 
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
+### Setup
 
 ```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
+# Clone the repo
+git clone https://github.com/Erichthonius07/ampere.git
+cd ampere
 
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
+# Install dependencies
+pip install -r requirements.txt
+# OR using uv:
+uv sync
 
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
+# Set your API key (Windows PowerShell)
+$env:XAI_API_KEY="your_groq_or_xai_key"
 
-# Push as a private space
-openenv push --private
+# Set your API key (Mac/Linux)
+export XAI_API_KEY="your_groq_or_xai_key"
 
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
+# Run the agent against all 3 tasks
+python inference.py
 ```
 
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
+The inference script boots the environment server, connects via WebSocket, and runs the agent sequentially through all three evaluation tasks.
 
-The deployed space includes:
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
+---
 
-## Environment Details
+## 🛠️ Tech Stack
 
-### Action
-**AmpereAction**: Contains a single field
-- `message` (str) - The message to echo back
+| Layer | Technology |
+|---|---|
+| Agent core | OpenAI Python SDK, Llama 3.3 70B via Groq |
+| Environment server | FastAPI, uvicorn, websockets |
+| Physics & graph | NetworkX (Dijkstra pathfinding), NumPy |
+| Schema validation | Pydantic v2, openenv-core |
+| Cloud deployment | Hugging Face Spaces |
 
-### Observation
-**AmpereObservation**: Contains the echo response and metadata
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
+---
 
-### Reward
-The reward is calculated as: `message_length × 0.1`
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a Ampere environment server running, you can connect directly:
-
-```python
-from ampere import AmpereEnv
-
-# Connect to existing server
-ampereenv = AmpereEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = ampereenv.reset()
-result = ampereenv.step(AmpereAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `ampereenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from ampere import AmpereAction, AmpereEnv
-
-# Connect with context manager (auto-connects and closes)
-with AmpereEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(AmpereAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    AmpereEnvironment,  # Pass class, not instance
-    AmpereAction,
-    AmpereObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from ampere import AmpereAction, AmpereEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with AmpereEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(AmpereAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
-```
-
-## Development & Testing
-
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
-
-```bash
-# From the server directory
-python3 server/ampere_environment.py
-```
-
-This verifies that:
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
-
-### Running Locally
-
-Run the server locally for development:
-
-```bash
-uvicorn server.app:app --reload
-```
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 ampere/
-├── .dockerignore         # Docker build exclusions
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── openenv.yaml           # OpenEnv manifest
-├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
-├── client.py              # AmpereEnv client
-├── models.py              # Action and Observation models
-└── server/
-    ├── __init__.py        # Server module exports
-    ├── ampere_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
-    └── Dockerfile         # Container image definition
+├── ampere/
+│   ├── models.py              # EVAction, EVObservation, GPSDashboard schemas
+│   ├── client.py              # WebSocket client
+│   ├── openenv.yaml           # Task definitions and metadata
+│   └── server/
+│       ├── app.py             # FastAPI server via create_app()
+│       └── ampere_environment.py  # Physics engine, reward function, grader
+├── graph_data.json            # Real route data for all 3 tasks
+├── inference.py               # LLM agent with autopilot safety layer
+└── requirements.txt
 ```
+
+---
+
+*Built by Team Paracetamol*
